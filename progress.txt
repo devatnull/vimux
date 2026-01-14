@@ -8,6 +8,7 @@
 - When spreading state with null assignments, always add explicit `: VimState` type annotation to avoid TypeScript inference narrowing
 - Text objects live in src/lib/simulator/vim/textObjects.ts; use executeTextObject(state, type, objectKey) as main entry point
 - Command mode functions live in src/lib/simulator/vim/commands.ts; use handleCommandModeKey() for key processing, executeCommand() for command execution
+- Macro functions live in src/lib/simulator/vim/macros.ts; use prepareMacroExecution() to get keystrokes array, caller is responsible for executing them
 
 ---
 
@@ -277,4 +278,30 @@ Thread: http://localhost:8317/threads/T-019bbbdf-b4d1-744e-9ee9-9bf0fee9833e
   - searchWordUnderCursor has wholeWord param (default true) for * vs g* behavior
   - SearchResult type used for all search operations
   - searchState in VimState tracks pattern, matches, currentMatchIndex, highlightEnabled
+---
+
+## 2026-01-14 - US-011
+Thread: http://localhost:8317/threads/T-019bbbe5-fc2f-7144-a068-b3ca0e2e5c48
+- Implemented complete vim macro system in src/lib/simulator/vim/macros.ts:
+  - q{a-z} starts recording to register via startMacroRecording()
+  - q stops recording via stopMacroRecording()
+  - Status bar message "recording @{register}" while recording
+  - recordKeystroke() captures all keystrokes during recording
+  - @{a-z} plays macro via prepareMacroExecution() which returns keystrokes array
+  - @@ repeats last played macro using lastPlayedMacro state
+  - {count}@{a-z} supported via count parameter in prepareMacroExecution()
+  - Macros can call other macros (keystrokes include @ sequences)
+  - Macro execution stops on error (caller handles by checking success flag)
+  - getMacrosForDisplay() for :registers integration
+  - encodeKeystrokeForMacro() handles special keys (<Esc>, <Enter>, <C-x>, etc.)
+  - parseMacroKeystrokes() parses encoded sequences back to keystrokes
+  - setMacroContent()/appendToMacro() for uppercase register append behavior
+- Updated src/lib/simulator/vim/index.ts to export macros module
+- Files changed: 2 files (macros.ts new, index.ts updated)
+- **Learnings for future iterations:**
+  - Macros stored as string in state.macros[register], not as keystroke arrays
+  - prepareMacroExecution() returns { state, keystrokes[], success, error? } - caller executes keystrokes
+  - Use <Esc>, <Enter>, <C-x> notation for special keys in macro storage
+  - recordingMacro state holds current register being recorded, null when not recording
+  - lastPlayedMacro tracks register for @@ repeat functionality
 ---
