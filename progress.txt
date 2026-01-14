@@ -1,0 +1,32 @@
+## Codebase Patterns
+- Simulator types live in src/lib/simulator/types.ts
+- Factory functions for default state in src/lib/simulator/constants.ts
+- Export all from index.ts for clean imports
+- Use `npm run build` for typecheck (includes TypeScript checking)
+- Pre-existing lint errors in page.tsx and components exist; ignore them
+
+---
+
+## 2026-01-14 - US-001
+Thread: http://localhost:8317/threads/T-019bbb9c-dc27-70b1-8eb4-21ec50e69963
+- Implemented comprehensive type definitions for tmux and vim state
+- Created src/lib/simulator/types.ts with:
+  - VimMode, VimOperator, SearchDirection, FindMotion types
+  - VimBuffer with marks, folds, undo/redo stacks, cursor position
+  - VimState with registers (named, numbered, special), macros, jumplist, changelist, search state
+  - TmuxPane with dimensions, content, scrollback, zoom state
+  - TmuxWindow with panes, layout types
+  - TmuxSession with windows, attached state
+  - TmuxState with copy mode, prefix state, paste buffer
+  - SimulatorState combining tmux and vim
+- Created src/lib/simulator/constants.ts with:
+  - Default settings (VimSettings)
+  - Factory functions for buffers, panes, windows, sessions
+  - Bracket pairs, word separators, special keys mappings
+- Created src/lib/simulator/index.ts for exports
+- Files changed: 3 new files in src/lib/simulator/
+- **Learnings for future iterations:**
+  - Existing types.ts in src/lib/ has older/simpler definitions - new simulator types are more comprehensive
+  - Use createDefaultSimulatorState() to initialize full state
+  - VimRegisterContent has type property ("char" | "line" | "block") for paste behavior
+---
