@@ -7,6 +7,7 @@
 - Operator functions live in src/lib/simulator/vim/operators.ts
 - When spreading state with null assignments, always add explicit `: VimState` type annotation to avoid TypeScript inference narrowing
 - Text objects live in src/lib/simulator/vim/textObjects.ts; use executeTextObject(state, type, objectKey) as main entry point
+- Command mode functions live in src/lib/simulator/vim/commands.ts; use handleCommandModeKey() for key processing, executeCommand() for command execution
 
 ---
 
@@ -189,4 +190,37 @@ Thread: http://localhost:8317/threads/T-019bbbc5-7313-761b-abcf-d6151d7a76a0
   - lastVisualSelection preserved for gv reselect functionality
   - Block mode operations iterate line-by-line applying column ranges
   - handleVisualModeKey() is main entry point for visual mode key processing
+---
+
+## 2026-01-14 - US-008
+Thread: http://localhost:8317/threads/T-019bbbcb-c584-7239-9f58-79a8e0f024f9
+- Implemented complete vim command mode in src/lib/simulator/vim/commands.ts:
+  - : enters command mode, Escape cancels
+  - :w/:write simulates write (sets modified=false, shows message)
+  - :q/:quit simulates quit, :q! force quits
+  - :wq/:x write and quit
+  - :e/:edit {file} opens file in new buffer or switches to existing
+  - :{number} goes to specific line number
+  - :s/old/new/[g] substitutes on current line
+  - :%s/old/new/g substitutes in entire file
+  - :'<,'>s/old/new/g substitutes in visual selection range
+  - :noh clears search highlighting
+  - :set shows settings, :set {option} toggles, :set {option}? queries
+  - :sp/:vs horizontal/vertical split (simulated)
+  - :bn/:bp buffer next/previous
+  - :bd buffer delete, :bd! force delete
+  - :ls/:buffers list all buffers
+  - :b {number|name} switch to buffer by number or partial name match
+  - :marks shows all marks, :delmarks deletes marks
+  - Command history navigation with up/down arrows
+  - Tab completion for common commands
+- Updated src/lib/simulator/vim/index.ts to export commands
+- Files changed: 2 files (commands.ts new, index.ts updated)
+- **Learnings for future iterations:**
+  - CommandResult includes optional shouldQuit flag for quit commands
+  - enterCommandMode() sets buffer.mode to "command" and clears commandLine
+  - handleCommandModeKey() is main entry point for command mode key processing
+  - executeCommand() parses and executes the command string
+  - Command history stored in state.commandLineHistory, index in commandLineHistoryIndex
+  - Use explicit type-safe helper functions for VimSettings updates to avoid TypeScript inference issues
 ---
