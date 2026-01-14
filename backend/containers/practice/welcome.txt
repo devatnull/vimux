@@ -1,0 +1,36 @@
+Welcome to the tmux & Neovim Learning Environment!
+=================================================
+
+You're now in a real terminal with real neovim and tmux.
+Practice the commands you've learned here.
+
+FILES IN THIS DIRECTORY:
+------------------------
+- welcome.txt     (this file)
+- sample.js       (JavaScript code to practice editing)
+- sample.py       (Python code to practice editing)
+- config.json     (JSON file for practice)
+- README.md       (Markdown file)
+
+QUICK REFERENCE:
+----------------
+tmux:
+  Ctrl-b "    Split pane horizontally
+  Ctrl-b %    Split pane vertically
+  Ctrl-b ←→↑↓ Navigate panes
+  Ctrl-b c    New window
+  Ctrl-b 0-9  Switch windows
+  Ctrl-b d    Detach (exits session)
+
+neovim:
+  i           Insert mode
+  Esc         Normal mode
+  :w          Save
+  :q          Quit
+  :wq         Save and quit
+  h j k l     Move cursor
+  dd          Delete line
+  yy          Yank (copy) line
+  p           Paste
+
+Happy learning! 🚀

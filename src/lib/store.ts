@@ -12,7 +12,10 @@ import type {
   TmuxPane,
   VimBuffer,
   VimMode,
+  LessonStep,
 } from "./types";
+import { validateState } from "./validateState";
+import { vim, tmux, createDefaultVimState, createDefaultBuffer as createSimulatorBuffer } from "./simulator";
 
 // ============================================================================
 // DEFAULT STATE CREATORS
@@ -28,7 +31,12 @@ const createDefaultPane = (id: string, isActive = true): TmuxPane => ({
   cursorX: 2,
   cursorY: 0,
   isActive,
+  isZoomed: false,
   title: "bash",
+  scrollback: [],
+  scrollbackPosition: 0,
+  alternateScreen: null,
+  synchronizeInput: false,
 });
 
 const createDefaultWindow = (id: string, name: string, index: number): TmuxWindow => ({
@@ -38,6 +46,8 @@ const createDefaultWindow = (id: string, name: string, index: number): TmuxWindo
   activePaneId: `${id}-pane-0`,
   isActive: index === 0,
   index,
+  layout: "even-horizontal",
+  lastActivePaneId: null,
 });
 
 const createDefaultSession = (id: string, name: string): TmuxSession => ({
@@ -45,7 +55,9 @@ const createDefaultSession = (id: string, name: string): TmuxSession => ({
   name,
   windows: [createDefaultWindow(`${id}-win-0`, "main", 0)],
   activeWindowId: `${id}-win-0`,
+  lastActiveWindowId: null,
   createdAt: Date.now(),
+  attached: true,
 });
 
 const sampleCode = [
@@ -104,25 +116,49 @@ const createDefaultBuffer = (): VimBuffer => ({
   cursorCol: 0,
   mode: "normal",
   modified: false,
+  readonly: false,
+  marks: {},
+  folds: [],
+  syntaxHighlighting: true,
+  filetype: "javascript",
+  undoStack: [],
+  redoStack: [],
+  changelistPosition: 0,
 });
+
+const createInitialVimState = () => {
+  const defaultVimState = createDefaultVimState();
+  const customBuffer = createDefaultBuffer();
+  return {
+    ...defaultVimState,
+    buffers: [customBuffer],
+    activeBufferId: customBuffer.id,
+  };
+};
 
 const initialSimulatorState: SimulatorState = {
   tmux: {
     sessions: [createDefaultSession("session-0", "main")],
     activeSessionId: "session-0",
     prefixActive: false,
-    copyMode: false,
+    prefixTimeout: null,
+    copyMode: {
+      enabled: false,
+      selectionStart: null,
+      selectionEnd: null,
+      rectangleSelect: false,
+      searchPattern: null,
+      searchDirection: "forward",
+    },
     mouseMode: true,
+    pasteBuffer: [],
+    pasteBufferIndex: 0,
+    commandPrompt: null,
+    commandPromptHistory: [],
+    message: null,
+    messageType: null,
   },
-  vim: {
-    buffers: [createDefaultBuffer()],
-    activeBufferId: "buffer-0",
-    commandLine: "",
-    commandMode: false,
-    registers: { '"': "" },
-    pendingOperator: null,
-    count: undefined,
-  },
+  vim: createInitialVimState(),
   keySequence: [],
   lastAction: undefined,
 };
@@ -159,8 +195,12 @@ interface SimulatorStore {
   setLesson: (lesson: Lesson | null) => void;
   nextStep: () => void;
   prevStep: () => void;
+  skipStep: () => void;
+  resetLesson: () => void;
+  validateCurrentStep: () => boolean;
   setFeedback: (feedback: { type: "success" | "error"; message: string } | null) => void;
   showMessage: (msg: string, type?: "info" | "warning" | "error") => void;
+  initialLessonState: SimulatorState | null;
 
   // Tmux actions
   splitPane: (direction: "horizontal" | "vertical") => void;
@@ -193,7 +233,7 @@ interface SimulatorStore {
   toggleCase: () => void;
   indent: (direction: "left" | "right") => void;
   executeCommand: (command: string) => void;
-  executeOperator: (op: "d" | "y" | "c", motion: string) => void;
+  executeOperator: (op: import("./simulator/types").VimOperator, motion: string) => void;
   undo: () => void;
   redo: () => void;
   searchForward: () => void;
@@ -212,6 +252,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
   feedback: null,
   leaderActive: false,
   leaderSequence: [],
+  initialLessonState: null,
 
   // ===========================================================================
   // MAIN KEY HANDLER
@@ -233,19 +274,36 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       state: { ...s.state, keySequence: newSequence },
     }));
 
-    // Validate lesson step
+    // Validate lesson step (defer to after state changes)
     if (currentLesson) {
-      const currentStep = currentLesson.steps[currentStepIndex];
-      if (currentStep) {
-        const expectedKey = currentStep.expectedKeys[0];
-        if (keyRepr === expectedKey || key === expectedKey) {
-          set({ feedback: { type: "success", message: currentStep.successMessage } });
-          setTimeout(() => {
-            get().nextStep();
-            set({ feedback: null });
-          }, 600);
+      setTimeout(() => {
+        const { state: newState, currentStepIndex: stepIdx } = get();
+        const currentStep = currentLesson.steps[stepIdx];
+        if (currentStep) {
+          let stepPassed = false;
+          
+          if (currentStep.expectedKeys?.length) {
+            const expectedKey = currentStep.expectedKeys[0];
+            if (keyRepr === expectedKey || key === expectedKey) {
+              stepPassed = true;
+            }
+          }
+          
+          if (currentStep.validation && !stepPassed) {
+            if (validateState(newState, currentStep.validation)) {
+              stepPassed = true;
+            }
+          }
+          
+          if (stepPassed) {
+            set({ feedback: { type: "success", message: currentStep.successMessage } });
+            setTimeout(() => {
+              get().nextStep();
+              set({ feedback: null });
+            }, 600);
+          }
         }
-      }
+      }, 10);
     }
 
     const buf = state.vim.buffers.find((b) => b.id === state.vim.activeBufferId);
@@ -499,77 +557,15 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
 
     // INSERT MODE
     if (buf.mode === "insert") {
-      if (key === "Escape") {
-        get().setMode("normal");
-        get().moveCursor("left");
-      } else if (key === "Backspace") {
-        set((s) => {
-          const b = s.state.vim.buffers.find((x) => x.id === s.state.vim.activeBufferId);
-          if (!b || b.cursorCol === 0) {
-            // Join with previous line
-            if (b && b.cursorLine > 0) {
-              const prevLine = b.content[b.cursorLine - 1];
-              const currLine = b.content[b.cursorLine];
-              const newContent = [...b.content];
-              newContent[b.cursorLine - 1] = prevLine + currLine;
-              newContent.splice(b.cursorLine, 1);
-              return {
-                state: {
-                  ...s.state,
-                  vim: {
-                    ...s.state.vim,
-                    buffers: s.state.vim.buffers.map((x) =>
-                      x.id === b.id ? { ...x, content: newContent, cursorLine: b.cursorLine - 1, cursorCol: prevLine.length, modified: true } : x
-                    ),
-                  },
-                },
-              };
-            }
-            return s;
-          }
-          const line = b.content[b.cursorLine];
-          const newLine = line.slice(0, b.cursorCol - 1) + line.slice(b.cursorCol);
-          const newContent = [...b.content];
-          newContent[b.cursorLine] = newLine;
-          return {
-            state: {
-              ...s.state,
-              vim: {
-                ...s.state.vim,
-                buffers: s.state.vim.buffers.map((x) =>
-                  x.id === b.id ? { ...x, content: newContent, cursorCol: b.cursorCol - 1, modified: true } : x
-                ),
-              },
-            },
-          };
-        });
-      } else if (key === "Enter") {
-        set((s) => {
-          const b = s.state.vim.buffers.find((x) => x.id === s.state.vim.activeBufferId);
-          if (!b) return s;
-          const line = b.content[b.cursorLine];
-          const before = line.slice(0, b.cursorCol);
-          const after = line.slice(b.cursorCol);
-          const newContent = [...b.content];
-          newContent[b.cursorLine] = before;
-          newContent.splice(b.cursorLine + 1, 0, after);
-          return {
-            state: {
-              ...s.state,
-              vim: {
-                ...s.state.vim,
-                buffers: s.state.vim.buffers.map((x) =>
-                  x.id === b.id ? { ...x, content: newContent, cursorLine: b.cursorLine + 1, cursorCol: 0, modified: true } : x
-                ),
-              },
-            },
-          };
-        });
-      } else if (key === "Tab") {
-        get().insertChar("  ");
-      } else if (key.length === 1) {
-        get().insertChar(key);
-      }
+      set((s) => {
+        const result = vim.handleInsertModeKey(s.state.vim, key, modifiers.ctrl);
+        return {
+          state: {
+            ...s.state,
+            vim: result.state,
+          },
+        };
+      });
       return;
     }
 
@@ -700,7 +696,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       // Misc
       "Escape": () => {
         set((s) => ({
-          state: { ...s.state, vim: { ...s.state.vim, pendingOperator: null, message: undefined } },
+          state: { ...s.state, vim: { ...s.state.vim, pendingOperator: null, message: null } },
         }));
       },
       "n": () => get().showMessage("Next search match", "info"),
@@ -754,7 +750,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
     }));
     setTimeout(() => {
       set((s) => ({
-        state: { ...s.state, vim: { ...s.state.vim, message: undefined } },
+        state: { ...s.state, vim: { ...s.state.vim, message: null } },
       }));
     }, 1500);
   },
@@ -773,7 +769,13 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
   },
 
   setLesson: (lesson) => {
-    set({ currentLesson: lesson, currentStepIndex: 0, feedback: null });
+    const { state } = get();
+    set({ 
+      currentLesson: lesson, 
+      currentStepIndex: 0, 
+      feedback: null,
+      initialLessonState: JSON.parse(JSON.stringify(state)),
+    });
   },
 
   nextStep: () => {
@@ -791,44 +793,48 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
     }
   },
 
+  skipStep: () => {
+    const { currentLesson, currentStepIndex } = get();
+    if (!currentLesson) return;
+    if (currentStepIndex < currentLesson.steps.length - 1) {
+      set({ currentStepIndex: currentStepIndex + 1, feedback: null });
+    }
+  },
+
+  resetLesson: () => {
+    const { initialLessonState } = get();
+    if (initialLessonState) {
+      set({ 
+        state: JSON.parse(JSON.stringify(initialLessonState)),
+        currentStepIndex: 0, 
+        feedback: null,
+      });
+    }
+  },
+
+  validateCurrentStep: () => {
+    const { state, currentLesson, currentStepIndex } = get();
+    if (!currentLesson) return false;
+    const currentStep = currentLesson.steps[currentStepIndex];
+    if (!currentStep?.validation) return false;
+    return validateState(state, currentStep.validation);
+  },
+
   setFeedback: (feedback) => set({ feedback }),
 
   // ===========================================================================
-  // TMUX ACTIONS
+  // TMUX ACTIONS (using simulator modules)
   // ===========================================================================
   splitPane: (direction) => {
     set((s) => {
-      const session = s.state.tmux.sessions.find((x) => x.id === s.state.tmux.activeSessionId);
-      if (!session) return s;
-      const window = session.windows.find((x) => x.id === session.activeWindowId);
-      if (!window) return s;
-
-      const newPaneId = `${window.id}-pane-${window.panes.length}`;
-      const newPane = createDefaultPane(newPaneId, true);
-
+      const result = direction === "horizontal" 
+        ? tmux.splitHorizontal(s.state.tmux)
+        : tmux.splitVertical(s.state.tmux);
       return {
         state: {
           ...s.state,
-          tmux: {
-            ...s.state.tmux,
-            sessions: s.state.tmux.sessions.map((sess) =>
-              sess.id === session.id
-                ? {
-                    ...sess,
-                    windows: sess.windows.map((win) =>
-                      win.id === window.id
-                        ? {
-                            ...win,
-                            panes: [...win.panes.map((p) => ({ ...p, isActive: false })), newPane],
-                            activePaneId: newPaneId,
-                          }
-                        : win
-                    ),
-                  }
-                : sess
-            ),
-          },
-          lastAction: `Split ${direction}`,
+          tmux: result.state,
+          lastAction: result.message || `Split ${direction}`,
         },
       };
     });
@@ -837,77 +843,43 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
 
   navigatePane: (direction) => {
     set((s) => {
-      const session = s.state.tmux.sessions.find((x) => x.id === s.state.tmux.activeSessionId);
-      if (!session) return s;
-      const window = session.windows.find((x) => x.id === session.activeWindowId);
-      if (!window || window.panes.length <= 1) return s;
-
-      const currentIndex = window.panes.findIndex((p) => p.id === window.activePaneId);
-      let newIndex = currentIndex;
-
-      if (direction === "left" || direction === "up") {
-        newIndex = (currentIndex - 1 + window.panes.length) % window.panes.length;
-      } else {
-        newIndex = (currentIndex + 1) % window.panes.length;
+      let result;
+      switch (direction) {
+        case "left": result = tmux.navigateLeft(s.state.tmux); break;
+        case "right": result = tmux.navigateRight(s.state.tmux); break;
+        case "up": result = tmux.navigateUp(s.state.tmux); break;
+        case "down": result = tmux.navigateDown(s.state.tmux); break;
+        default: return s;
       }
-
-      const newPaneId = window.panes[newIndex].id;
-
       return {
         state: {
           ...s.state,
-          tmux: {
-            ...s.state.tmux,
-            sessions: s.state.tmux.sessions.map((sess) =>
-              sess.id === session.id
-                ? {
-                    ...sess,
-                    windows: sess.windows.map((win) =>
-                      win.id === window.id
-                        ? {
-                            ...win,
-                            panes: win.panes.map((p) => ({ ...p, isActive: p.id === newPaneId })),
-                            activePaneId: newPaneId,
-                          }
-                        : win
-                    ),
-                  }
-                : sess
-            ),
-          },
+          tmux: result.state,
         },
       };
     });
   },
 
   resizePane: (direction) => {
+    set((s) => {
+      const result = tmux.resizePane(s.state.tmux, direction, 5);
+      return {
+        state: {
+          ...s.state,
+          tmux: result.state,
+        },
+      };
+    });
     get().showMessage(`Resize ${direction}`, "info");
   },
 
   createWindow: () => {
     set((s) => {
-      const session = s.state.tmux.sessions.find((x) => x.id === s.state.tmux.activeSessionId);
-      if (!session) return s;
-
-      const newIndex = session.windows.length;
-      const newWindowId = `${session.id}-win-${newIndex}`;
-      const newWindow = createDefaultWindow(newWindowId, `window-${newIndex}`, newIndex);
-
+      const result = tmux.createWindow(s.state.tmux);
       return {
         state: {
           ...s.state,
-          tmux: {
-            ...s.state.tmux,
-            sessions: s.state.tmux.sessions.map((sess) =>
-              sess.id === session.id
-                ? {
-                    ...sess,
-                    windows: [...sess.windows.map((w) => ({ ...w, isActive: false })), { ...newWindow, isActive: true }],
-                    activeWindowId: newWindowId,
-                  }
-                : sess
-            ),
-          },
+          tmux: result.state,
         },
       };
     });
@@ -916,27 +888,11 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
 
   switchWindow: (index) => {
     set((s) => {
-      const session = s.state.tmux.sessions.find((x) => x.id === s.state.tmux.activeSessionId);
-      if (!session) return s;
-
-      const targetWindow = session.windows[index];
-      if (!targetWindow) return s;
-
+      const result = tmux.switchToWindow(s.state.tmux, index);
       return {
         state: {
           ...s.state,
-          tmux: {
-            ...s.state.tmux,
-            sessions: s.state.tmux.sessions.map((sess) =>
-              sess.id === session.id
-                ? {
-                    ...sess,
-                    windows: sess.windows.map((w) => ({ ...w, isActive: w.id === targetWindow.id })),
-                    activeWindowId: targetWindow.id,
-                  }
-                : sess
-            ),
-          },
+          tmux: result.state,
         },
       };
     });
@@ -945,32 +901,11 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
 
   closePane: () => {
     set((s) => {
-      const session = s.state.tmux.sessions.find((x) => x.id === s.state.tmux.activeSessionId);
-      if (!session) return s;
-      const window = session.windows.find((x) => x.id === session.activeWindowId);
-      if (!window || window.panes.length <= 1) return s;
-
-      const currentIndex = window.panes.findIndex((p) => p.id === window.activePaneId);
-      const newPanes = window.panes.filter((p) => p.id !== window.activePaneId);
-      const newActiveIndex = Math.min(currentIndex, newPanes.length - 1);
-      newPanes[newActiveIndex].isActive = true;
-
+      const result = tmux.closePane(s.state.tmux);
       return {
         state: {
           ...s.state,
-          tmux: {
-            ...s.state.tmux,
-            sessions: s.state.tmux.sessions.map((sess) =>
-              sess.id === session.id
-                ? {
-                    ...sess,
-                    windows: sess.windows.map((win) =>
-                      win.id === window.id ? { ...win, panes: newPanes, activePaneId: newPanes[newActiveIndex].id } : win
-                    ),
-                  }
-                : sess
-            ),
-          },
+          tmux: result.state,
         },
       };
     });
@@ -978,52 +913,90 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
   },
 
   toggleZoom: () => {
+    set((s) => {
+      const result = tmux.toggleZoom(s.state.tmux);
+      return {
+        state: {
+          ...s.state,
+          tmux: result.state,
+        },
+      };
+    });
     get().showMessage("Zoom toggled", "info");
   },
 
   swapPane: (direction) => {
+    set((s) => {
+      const result = direction === "next"
+        ? tmux.swapWithNext(s.state.tmux)
+        : tmux.swapWithPrevious(s.state.tmux);
+      return {
+        state: {
+          ...s.state,
+          tmux: result.state,
+        },
+      };
+    });
     get().showMessage(`Swap pane ${direction}`, "info");
   },
 
   renameWindow: (name) => {
+    set((s) => {
+      const result = tmux.renameWindow(s.state.tmux, name);
+      return {
+        state: {
+          ...s.state,
+          tmux: result.state,
+        },
+      };
+    });
     get().showMessage(`Renamed to ${name}`, "info");
   },
 
   toggleCopyMode: () => {
-    set((s) => ({
-      state: { ...s.state, tmux: { ...s.state.tmux, copyMode: !s.state.tmux.copyMode } },
-    }));
-    get().showMessage(get().state.tmux.copyMode ? "Copy mode ON" : "Copy mode OFF", "info");
+    set((s) => {
+      const result = s.state.tmux.copyMode.enabled 
+        ? tmux.exitCopyMode(s.state.tmux)
+        : tmux.enterCopyMode(s.state.tmux);
+      return {
+        state: {
+          ...s.state,
+          tmux: result.state,
+        },
+      };
+    });
+    get().showMessage(get().state.tmux.copyMode.enabled ? "Copy mode ON" : "Copy mode OFF", "info");
   },
 
   toggleMouseMode: () => {
-    set((s) => ({
-      state: { ...s.state, tmux: { ...s.state.tmux, mouseMode: !s.state.tmux.mouseMode } },
-    }));
+    set((s) => {
+      const result = tmux.toggleMouseMode(s.state.tmux);
+      return {
+        state: {
+          ...s.state,
+          tmux: result.state,
+        },
+      };
+    });
     get().showMessage(get().state.tmux.mouseMode ? "Mouse ON" : "Mouse OFF", "info");
   },
 
   // ===========================================================================
-  // VIM ACTIONS
+  // VIM ACTIONS (using simulator modules)
   // ===========================================================================
   moveCursor: (direction) => {
     set((s) => {
       const buf = s.state.vim.buffers.find((b) => b.id === s.state.vim.activeBufferId);
       if (!buf) return s;
 
-      let newLine = buf.cursorLine;
-      let newCol = buf.cursorCol;
-      const lineLen = buf.content[buf.cursorLine]?.length || 0;
-
+      let result;
       switch (direction) {
-        case "left": newCol = Math.max(0, buf.cursorCol - 1); break;
-        case "right": newCol = Math.min(Math.max(0, lineLen - 1), buf.cursorCol + 1); break;
-        case "up": newLine = Math.max(0, buf.cursorLine - 1); break;
-        case "down": newLine = Math.min(buf.content.length - 1, buf.cursorLine + 1); break;
+        case "left": result = vim.motionH(buf); break;
+        case "right": result = vim.motionL(buf); break;
+        case "up": result = vim.motionK(buf); break;
+        case "down": result = vim.motionJ(buf); break;
+        default: return s;
       }
-
-      const newLineLen = buf.content[newLine]?.length || 0;
-      newCol = Math.min(newCol, Math.max(0, newLineLen - 1));
 
       return {
         state: {
@@ -1031,7 +1004,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
           vim: {
             ...s.state.vim,
             buffers: s.state.vim.buffers.map((b) =>
-              b.id === buf.id ? { ...b, cursorLine: newLine, cursorCol: Math.max(0, newCol) } : b
+              b.id === buf.id ? { ...b, cursorLine: result.line, cursorCol: result.col } : b
             ),
           },
         },
@@ -1044,34 +1017,12 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       const buf = s.state.vim.buffers.find((b) => b.id === s.state.vim.activeBufferId);
       if (!buf) return s;
 
-      const line = buf.content[buf.cursorLine] || "";
-      let newCol = buf.cursorCol;
-      let newLine = buf.cursorLine;
-
-      if (direction === "forward") {
-        // Skip current word
-        while (newCol < line.length && !/\s/.test(line[newCol])) newCol++;
-        // Skip whitespace
-        while (newCol < line.length && /\s/.test(line[newCol])) newCol++;
-        // If at end, go to next line
-        if (newCol >= line.length && newLine < buf.content.length - 1) {
-          newLine++;
-          newCol = 0;
-        }
-      } else if (direction === "back") {
-        if (newCol === 0 && newLine > 0) {
-          newLine--;
-          newCol = Math.max(0, (buf.content[newLine]?.length || 1) - 1);
-        } else {
-          newCol--;
-          const l = buf.content[newLine] || "";
-          while (newCol > 0 && /\s/.test(l[newCol])) newCol--;
-          while (newCol > 0 && !/\s/.test(l[newCol - 1])) newCol--;
-        }
-      } else if (direction === "end") {
-        newCol++;
-        while (newCol < line.length && /\s/.test(line[newCol])) newCol++;
-        while (newCol < line.length - 1 && !/\s/.test(line[newCol + 1])) newCol++;
+      let result;
+      switch (direction) {
+        case "forward": result = vim.motionW(buf); break;
+        case "back": result = vim.motionB(buf); break;
+        case "end": result = vim.motionE(buf); break;
+        default: return s;
       }
 
       return {
@@ -1080,7 +1031,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
           vim: {
             ...s.state.vim,
             buffers: s.state.vim.buffers.map((b) =>
-              b.id === buf.id ? { ...b, cursorLine: newLine, cursorCol: Math.max(0, newCol) } : b
+              b.id === buf.id ? { ...b, cursorLine: result.line, cursorCol: result.col } : b
             ),
           },
         },
@@ -1093,15 +1044,12 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       const buf = s.state.vim.buffers.find((b) => b.id === s.state.vim.activeBufferId);
       if (!buf) return s;
 
-      const line = buf.content[buf.cursorLine] || "";
-      let newCol = 0;
-
-      if (position === "start") {
-        newCol = 0;
-      } else if (position === "firstChar") {
-        while (newCol < line.length && /\s/.test(line[newCol])) newCol++;
-      } else if (position === "end") {
-        newCol = Math.max(0, line.length - 1);
+      let result;
+      switch (position) {
+        case "start": result = vim.motion0(buf); break;
+        case "firstChar": result = vim.motionCaret(buf); break;
+        case "end": result = vim.motionDollar(buf); break;
+        default: return s;
       }
 
       return {
@@ -1110,7 +1058,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
           vim: {
             ...s.state.vim,
             buffers: s.state.vim.buffers.map((b) =>
-              b.id === buf.id ? { ...b, cursorCol: newCol } : b
+              b.id === buf.id ? { ...b, cursorLine: result.line, cursorCol: result.col } : b
             ),
           },
         },
@@ -1123,7 +1071,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       const buf = s.state.vim.buffers.find((b) => b.id === s.state.vim.activeBufferId);
       if (!buf) return s;
 
-      const newLine = position === "top" ? 0 : buf.content.length - 1;
+      const result = position === "top" ? vim.motionGG(buf) : vim.motionG(buf);
 
       return {
         state: {
@@ -1131,7 +1079,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
           vim: {
             ...s.state.vim,
             buffers: s.state.vim.buffers.map((b) =>
-              b.id === buf.id ? { ...b, cursorLine: newLine, cursorCol: 0 } : b
+              b.id === buf.id ? { ...b, cursorLine: result.line, cursorCol: result.col } : b
             ),
           },
         },
@@ -1144,15 +1092,9 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       const buf = s.state.vim.buffers.find((b) => b.id === s.state.vim.activeBufferId);
       if (!buf) return s;
 
-      let newLine = buf.cursorLine;
-
-      if (direction === "forward") {
-        while (newLine < buf.content.length - 1 && buf.content[newLine].trim() !== "") newLine++;
-        while (newLine < buf.content.length - 1 && buf.content[newLine].trim() === "") newLine++;
-      } else {
-        while (newLine > 0 && buf.content[newLine].trim() === "") newLine--;
-        while (newLine > 0 && buf.content[newLine].trim() !== "") newLine--;
-      }
+      const result = direction === "forward" 
+        ? vim.motionParagraphForward(buf) 
+        : vim.motionParagraphBackward(buf);
 
       return {
         state: {
@@ -1160,7 +1102,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
           vim: {
             ...s.state.vim,
             buffers: s.state.vim.buffers.map((b) =>
-              b.id === buf.id ? { ...b, cursorLine: newLine, cursorCol: 0 } : b
+              b.id === buf.id ? { ...b, cursorLine: result.line, cursorCol: result.col } : b
             ),
           },
         },
@@ -1169,13 +1111,21 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
   },
 
   scrollPage: (direction, amount) => {
-    const lines = amount === "half" ? 10 : 20;
+    const visibleLines = 20;
     set((s) => {
       const buf = s.state.vim.buffers.find((b) => b.id === s.state.vim.activeBufferId);
       if (!buf) return s;
 
-      const delta = direction === "down" ? lines : -lines;
-      const newLine = Math.max(0, Math.min(buf.content.length - 1, buf.cursorLine + delta));
+      let result;
+      if (amount === "half") {
+        result = direction === "down" 
+          ? vim.motionCtrlD(buf, visibleLines) 
+          : vim.motionCtrlU(buf, visibleLines);
+      } else {
+        result = direction === "down" 
+          ? vim.motionCtrlF(buf, visibleLines) 
+          : vim.motionCtrlB(buf, visibleLines);
+      }
 
       return {
         state: {
@@ -1183,7 +1133,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
           vim: {
             ...s.state.vim,
             buffers: s.state.vim.buffers.map((b) =>
-              b.id === buf.id ? { ...b, cursorLine: newLine } : b
+              b.id === buf.id ? { ...b, cursorLine: result.line, cursorCol: result.col } : b
             ),
           },
         },
@@ -1213,23 +1163,11 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
 
   insertChar: (char) => {
     set((s) => {
-      const buf = s.state.vim.buffers.find((b) => b.id === s.state.vim.activeBufferId);
-      if (!buf) return s;
-
-      const line = buf.content[buf.cursorLine] || "";
-      const newLine = line.slice(0, buf.cursorCol) + char + line.slice(buf.cursorCol);
-      const newContent = [...buf.content];
-      newContent[buf.cursorLine] = newLine;
-
+      const result = vim.insertCharacter(s.state.vim, char);
       return {
         state: {
           ...s.state,
-          vim: {
-            ...s.state.vim,
-            buffers: s.state.vim.buffers.map((b) =>
-              b.id === buf.id ? { ...b, content: newContent, cursorCol: buf.cursorCol + char.length, modified: true } : b
-            ),
-          },
+          vim: result.state,
         },
       };
     });
@@ -1237,27 +1175,11 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
 
   deleteChar: () => {
     set((s) => {
-      const buf = s.state.vim.buffers.find((b) => b.id === s.state.vim.activeBufferId);
-      if (!buf) return s;
-
-      const line = buf.content[buf.cursorLine] || "";
-      if (line.length === 0) return s;
-
-      const deleted = line[buf.cursorCol] || "";
-      const newLine = line.slice(0, buf.cursorCol) + line.slice(buf.cursorCol + 1);
-      const newContent = [...buf.content];
-      newContent[buf.cursorLine] = newLine;
-
+      const result = vim.deleteCharUnderCursor(s.state.vim);
       return {
         state: {
           ...s.state,
-          vim: {
-            ...s.state.vim,
-            registers: { ...s.state.vim.registers, '"': deleted },
-            buffers: s.state.vim.buffers.map((b) =>
-              b.id === buf.id ? { ...b, content: newContent, cursorCol: Math.min(buf.cursorCol, Math.max(0, newLine.length - 1)), modified: true } : b
-            ),
-          },
+          vim: result.state,
         },
       };
     });
@@ -1265,25 +1187,11 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
 
   deleteLine: () => {
     set((s) => {
-      const buf = s.state.vim.buffers.find((b) => b.id === s.state.vim.activeBufferId);
-      if (!buf) return s;
-
-      const yanked = buf.content[buf.cursorLine];
-      const newContent = buf.content.filter((_, i) => i !== buf.cursorLine);
-      if (newContent.length === 0) newContent.push("");
-
+      const result = vim.deleteWholeLine(s.state.vim);
       return {
         state: {
           ...s.state,
-          vim: {
-            ...s.state.vim,
-            registers: { ...s.state.vim.registers, '"': yanked },
-            buffers: s.state.vim.buffers.map((b) =>
-              b.id === buf.id
-                ? { ...b, content: newContent, cursorLine: Math.min(buf.cursorLine, newContent.length - 1), cursorCol: 0, modified: true }
-                : b
-            ),
-          },
+          vim: result.state,
         },
       };
     });
@@ -1292,16 +1200,11 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
 
   yankLine: () => {
     set((s) => {
-      const buf = s.state.vim.buffers.find((b) => b.id === s.state.vim.activeBufferId);
-      if (!buf) return s;
-
+      const result = vim.yankWholeLine(s.state.vim);
       return {
         state: {
           ...s.state,
-          vim: {
-            ...s.state.vim,
-            registers: { ...s.state.vim.registers, '"': buf.content[buf.cursorLine] },
-          },
+          vim: result.state,
         },
       };
     });
@@ -1310,25 +1213,11 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
 
   putText: (before) => {
     set((s) => {
-      const buf = s.state.vim.buffers.find((b) => b.id === s.state.vim.activeBufferId);
-      if (!buf) return s;
-
-      const text = s.state.vim.registers['"'] || "";
-      if (!text) return s;
-
-      const newContent = [...buf.content];
-      const insertLine = before ? buf.cursorLine : buf.cursorLine + 1;
-      newContent.splice(insertLine, 0, text);
-
+      const result = before ? vim.pasteBefore(s.state.vim) : vim.pasteAfter(s.state.vim);
       return {
         state: {
           ...s.state,
-          vim: {
-            ...s.state.vim,
-            buffers: s.state.vim.buffers.map((b) =>
-              b.id === buf.id ? { ...b, content: newContent, cursorLine: insertLine, cursorCol: 0, modified: true } : b
-            ),
-          },
+          vim: result,
         },
       };
     });
@@ -1337,24 +1226,11 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
 
   joinLines: () => {
     set((s) => {
-      const buf = s.state.vim.buffers.find((b) => b.id === s.state.vim.activeBufferId);
-      if (!buf || buf.cursorLine >= buf.content.length - 1) return s;
-
-      const current = buf.content[buf.cursorLine];
-      const next = buf.content[buf.cursorLine + 1];
-      const newContent = [...buf.content];
-      newContent[buf.cursorLine] = current + " " + next.trimStart();
-      newContent.splice(buf.cursorLine + 1, 1);
-
+      const result = vim.joinLines(s.state.vim);
       return {
         state: {
           ...s.state,
-          vim: {
-            ...s.state.vim,
-            buffers: s.state.vim.buffers.map((b) =>
-              b.id === buf.id ? { ...b, content: newContent, cursorCol: current.length, modified: true } : b
-            ),
-          },
+          vim: result,
         },
       };
     });
@@ -1362,26 +1238,11 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
 
   toggleCase: () => {
     set((s) => {
-      const buf = s.state.vim.buffers.find((b) => b.id === s.state.vim.activeBufferId);
-      if (!buf) return s;
-
-      const line = buf.content[buf.cursorLine] || "";
-      const char = line[buf.cursorCol];
-      if (!char) return s;
-
-      const toggled = char === char.toUpperCase() ? char.toLowerCase() : char.toUpperCase();
-      const newContent = [...buf.content];
-      newContent[buf.cursorLine] = line.slice(0, buf.cursorCol) + toggled + line.slice(buf.cursorCol + 1);
-
+      const result = vim.toggleCaseAtCursor(s.state.vim);
       return {
         state: {
           ...s.state,
-          vim: {
-            ...s.state.vim,
-            buffers: s.state.vim.buffers.map((b) =>
-              b.id === buf.id ? { ...b, content: newContent, cursorCol: Math.min(buf.cursorCol + 1, line.length - 1), modified: true } : b
-            ),
-          },
+          vim: result,
         },
       };
     });
@@ -1389,27 +1250,13 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
 
   indent: (direction) => {
     set((s) => {
-      const buf = s.state.vim.buffers.find((b) => b.id === s.state.vim.activeBufferId);
-      if (!buf) return s;
-
-      const line = buf.content[buf.cursorLine] || "";
-      const newContent = [...buf.content];
-
-      if (direction === "right") {
-        newContent[buf.cursorLine] = "  " + line;
-      } else {
-        newContent[buf.cursorLine] = line.replace(/^  /, "");
-      }
-
+      const result = direction === "right"
+        ? vim.indentLine(s.state.vim)
+        : vim.dedentLine(s.state.vim);
       return {
         state: {
           ...s.state,
-          vim: {
-            ...s.state.vim,
-            buffers: s.state.vim.buffers.map((b) =>
-              b.id === buf.id ? { ...b, content: newContent, modified: true } : b
-            ),
-          },
+          vim: result,
         },
       };
     });
@@ -1446,231 +1293,65 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
   },
 
   executeOperator: (op, motion) => {
-    const buf = get().state.vim.buffers.find((b) => b.id === get().state.vim.activeBufferId);
-    if (!buf) return;
-
-    // Clear pending operator
-    set((s) => ({ state: { ...s.state, vim: { ...s.state.vim, pendingOperator: null } } }));
-
-    // Handle motions
+    // Handle line operations (dd, yy, cc)
     if (motion === op) {
-      // dd, yy, cc - operate on line
       if (op === "d") get().deleteLine();
       else if (op === "y") get().yankLine();
       else if (op === "c") { get().deleteLine(); get().setMode("insert"); }
       return;
     }
 
-    if (motion === "w" || motion === "e") {
-      // dw, yw, cw - word
-      const line = buf.content[buf.cursorLine] || "";
-      let endCol = buf.cursorCol;
-      while (endCol < line.length && !/\s/.test(line[endCol])) endCol++;
-      while (endCol < line.length && /\s/.test(line[endCol])) endCol++;
-
-      const deleted = line.slice(buf.cursorCol, endCol);
-      const newLine = line.slice(0, buf.cursorCol) + line.slice(endCol);
-
-      set((s) => ({
-        state: {
-          ...s.state,
-          vim: {
-            ...s.state.vim,
-            registers: { ...s.state.vim.registers, '"': deleted },
-            buffers: s.state.vim.buffers.map((b) =>
-              b.id === buf.id ? { ...b, content: [...b.content.slice(0, buf.cursorLine), newLine, ...b.content.slice(buf.cursorLine + 1)], modified: op !== "y" } : b
-            ),
-          },
-        },
-      }));
-
-      if (op === "c") get().setMode("insert");
-      get().showMessage(`${op}${motion}`, "info");
-      return;
-    }
-
-    if (motion === "b") {
-      const line = buf.content[buf.cursorLine] || "";
-      let startCol = buf.cursorCol - 1;
-      while (startCol > 0 && /\s/.test(line[startCol])) startCol--;
-      while (startCol > 0 && !/\s/.test(line[startCol - 1])) startCol--;
-      startCol = Math.max(0, startCol);
-
-      const deleted = line.slice(startCol, buf.cursorCol);
-      const newLine = line.slice(0, startCol) + line.slice(buf.cursorCol);
-
-      set((s) => ({
-        state: {
-          ...s.state,
-          vim: {
-            ...s.state.vim,
-            registers: { ...s.state.vim.registers, '"': deleted },
-            buffers: s.state.vim.buffers.map((b) =>
-              b.id === buf.id ? { ...b, content: [...b.content.slice(0, buf.cursorLine), newLine, ...b.content.slice(buf.cursorLine + 1)], cursorCol: startCol, modified: op !== "y" } : b
-            ),
-          },
-        },
-      }));
-
-      if (op === "c") get().setMode("insert");
-      return;
-    }
-
-    if (motion === "$") {
-      const line = buf.content[buf.cursorLine] || "";
-      const deleted = line.slice(buf.cursorCol);
-      const newLine = line.slice(0, buf.cursorCol);
-
-      set((s) => ({
-        state: {
-          ...s.state,
-          vim: {
-            ...s.state.vim,
-            registers: { ...s.state.vim.registers, '"': deleted },
-            buffers: s.state.vim.buffers.map((b) =>
-              b.id === buf.id ? { ...b, content: [...b.content.slice(0, buf.cursorLine), newLine, ...b.content.slice(buf.cursorLine + 1)], modified: op !== "y" } : b
-            ),
-          },
-        },
-      }));
-
-      if (op === "c") get().setMode("insert");
-      return;
-    }
-
-    if (motion === "0" || motion === "^") {
-      const line = buf.content[buf.cursorLine] || "";
-      const deleted = line.slice(0, buf.cursorCol);
-      const newLine = line.slice(buf.cursorCol);
-
-      set((s) => ({
-        state: {
-          ...s.state,
-          vim: {
-            ...s.state.vim,
-            registers: { ...s.state.vim.registers, '"': deleted },
-            buffers: s.state.vim.buffers.map((b) =>
-              b.id === buf.id ? { ...b, content: [...b.content.slice(0, buf.cursorLine), newLine, ...b.content.slice(buf.cursorLine + 1)], cursorCol: 0, modified: op !== "y" } : b
-            ),
-          },
-        },
-      }));
-
-      if (op === "c") get().setMode("insert");
-      return;
-    }
-
-    if (motion === "j") {
-      // dj - delete current and next line
-      const yanked = buf.content.slice(buf.cursorLine, Math.min(buf.cursorLine + 2, buf.content.length)).join("\n");
-      const newContent = [...buf.content];
-      newContent.splice(buf.cursorLine, 2);
-      if (newContent.length === 0) newContent.push("");
-
-      set((s) => ({
-        state: {
-          ...s.state,
-          vim: {
-            ...s.state.vim,
-            registers: { ...s.state.vim.registers, '"': yanked },
-            buffers: s.state.vim.buffers.map((b) =>
-              b.id === buf.id ? { ...b, content: newContent, cursorLine: Math.min(buf.cursorLine, newContent.length - 1), modified: op !== "y" } : b
-            ),
-          },
-        },
-      }));
-
-      if (op === "c") get().setMode("insert");
-      return;
-    }
-
-    if (motion === "k") {
-      const startLine = Math.max(0, buf.cursorLine - 1);
-      const yanked = buf.content.slice(startLine, buf.cursorLine + 1).join("\n");
-      const newContent = [...buf.content];
-      newContent.splice(startLine, 2);
-      if (newContent.length === 0) newContent.push("");
-
-      set((s) => ({
-        state: {
-          ...s.state,
-          vim: {
-            ...s.state.vim,
-            registers: { ...s.state.vim.registers, '"': yanked },
-            buffers: s.state.vim.buffers.map((b) =>
-              b.id === buf.id ? { ...b, content: newContent, cursorLine: startLine, modified: op !== "y" } : b
-            ),
-          },
-        },
-      }));
-
-      if (op === "c") get().setMode("insert");
-      return;
-    }
-
-    if (motion === "G") {
-      const yanked = buf.content.slice(buf.cursorLine).join("\n");
-      const newContent = buf.content.slice(0, buf.cursorLine);
-      if (newContent.length === 0) newContent.push("");
-
-      set((s) => ({
-        state: {
-          ...s.state,
-          vim: {
-            ...s.state.vim,
-            registers: { ...s.state.vim.registers, '"': yanked },
-            buffers: s.state.vim.buffers.map((b) =>
-              b.id === buf.id ? { ...b, content: newContent, cursorLine: Math.max(0, newContent.length - 1), modified: op !== "y" } : b
-            ),
-          },
-        },
-      }));
-
-      if (op === "c") get().setMode("insert");
-      return;
-    }
-
-    if (motion === "g") {
-      const yanked = buf.content.slice(0, buf.cursorLine + 1).join("\n");
-      const newContent = buf.content.slice(buf.cursorLine + 1);
-      if (newContent.length === 0) newContent.push("");
-
-      set((s) => ({
-        state: {
-          ...s.state,
-          vim: {
-            ...s.state.vim,
-            registers: { ...s.state.vim.registers, '"': yanked },
-            buffers: s.state.vim.buffers.map((b) =>
-              b.id === buf.id ? { ...b, content: newContent, cursorLine: 0, modified: op !== "y" } : b
-            ),
-          },
-        },
-      }));
-
-      if (op === "c") get().setMode("insert");
-      return;
-    }
-
-    // iw - inner word, aw - a word (simplified)
+    // Handle text objects (i/a followed by another key)
     if (motion === "i" || motion === "a") {
       get().showMessage(`${op}${motion}... (press w, ", ', (, {, etc.)`, "info");
-      // Would need another key press for text objects
       return;
     }
 
-    // Cancel on Escape or unknown
-    if (motion === "Escape") return;
+    // Cancel on Escape
+    if (motion === "Escape") {
+      set((s) => ({ state: { ...s.state, vim: { ...s.state.vim, pendingOperator: null } } }));
+      return;
+    }
 
-    get().showMessage(`Unknown: ${op}${motion}`, "warning");
+    // Use simulator's executeOperatorWithMotion for supported operators
+    if (op === "d" || op === "y" || op === "c") {
+      set((s) => {
+        const result = vim.executeOperatorWithMotion(s.state.vim, op, motion);
+        return {
+          state: {
+            ...s.state,
+            vim: result.state,
+          },
+        };
+      });
+      get().showMessage(`${op}${motion}`, "info");
+    } else {
+      get().showMessage(`Unknown: ${op}${motion}`, "warning");
+    }
   },
 
   undo: () => {
-    get().showMessage("Undo (history not implemented)", "warning");
+    set((s) => {
+      const result = vim.undo(s.state.vim);
+      return {
+        state: {
+          ...s.state,
+          vim: result.state,
+        },
+      };
+    });
   },
 
   redo: () => {
-    get().showMessage("Redo (history not implemented)", "warning");
+    set((s) => {
+      const result = vim.redo(s.state.vim);
+      return {
+        state: {
+          ...s.state,
+          vim: result.state,
+        },
+      };
+    });
   },
 
   searchForward: () => {
@@ -1682,7 +1363,23 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
   },
 
   repeatLastChange: () => {
-    get().showMessage("Repeat last change", "info");
+    set((s) => {
+      const result = vim.executeDotRepeat(s.state.vim);
+      if (!result.success && result.error) {
+        return {
+          state: {
+            ...s.state,
+            vim: { ...s.state.vim, message: result.error, messageType: "warning" },
+          },
+        };
+      }
+      return {
+        state: {
+          ...s.state,
+          vim: result.state,
+        },
+      };
+    });
   },
 }));
 

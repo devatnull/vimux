@@ -6,7 +6,7 @@ import type {
   CursorPosition,
 } from "../types";
 import { getActiveBuffer } from "./motions";
-import { executeOperatorWithMotion, deleteCharUnderCursor, deleteCharBeforeCursor, deleteWholeLine, yankWholeLine } from "./operators";
+import { executeOperatorWithMotion, deleteCharUnderCursor, deleteCharBeforeCursor, deleteWholeLine, yankWholeLine, paste } from "./operators";
 import { executeInsertCommand, handleInsertModeKey } from "./insertMode";
 
 export interface UndoTreeNode {
@@ -641,11 +641,9 @@ function executeSimpleCommand(state: VimState, cmd: string): VimState {
       return result.state;
     }
     case "p": {
-      const { paste } = require("./operators");
       return paste(state, true, 1);
     }
     case "P": {
-      const { paste } = require("./operators");
       return paste(state, false, 1);
     }
     case "~": {
@@ -668,7 +666,7 @@ function executeSimpleCommand(state: VimState, cmd: string): VimState {
   }
 }
 
-function toggleCaseAtCursor(state: VimState): VimState {
+export function toggleCaseAtCursor(state: VimState): VimState {
   const buffer = getActiveBuffer(state);
   if (!buffer) return state;
   
@@ -695,7 +693,7 @@ function toggleCaseAtCursor(state: VimState): VimState {
   };
 }
 
-function joinLines(state: VimState): VimState {
+export function joinLines(state: VimState): VimState {
   const buffer = getActiveBuffer(state);
   if (!buffer) return state;
   
@@ -727,7 +725,7 @@ function joinLines(state: VimState): VimState {
   };
 }
 
-function indentLine(state: VimState): VimState {
+export function indentLine(state: VimState): VimState {
   const buffer = getActiveBuffer(state);
   if (!buffer) return state;
   
@@ -753,7 +751,7 @@ function indentLine(state: VimState): VimState {
   };
 }
 
-function dedentLine(state: VimState): VimState {
+export function dedentLine(state: VimState): VimState {
   const buffer = getActiveBuffer(state);
   if (!buffer) return state;
   

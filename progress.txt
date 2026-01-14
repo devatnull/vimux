@@ -390,3 +390,100 @@ Thread: http://localhost:8317/threads/T-019bbc06-40f5-708e-bb6f-4f0d197cd328
   - Some toggle actions directly modify state.settings (wrap, line numbers, etc.)
   - Buffer operations (delete, next, prev) are handled in executeLeaderAction
 ---
+
+## 2026-01-14 - US-015
+Thread: http://localhost:8317/threads/T-019bbc10-e39e-7422-b0fa-6560328a7ae8
+- Implemented vim g-prefix commands in src/lib/simulator/vim/gCommands.ts:
+  - gg goes to first line (via motionGG from motions.ts)
+  - gd goes to local definition (first occurrence of word)
+  - gD goes to global definition (first occurrence in file)
+  - gf goes to file under cursor (shows message)
+  - gF goes to file:line under cursor
+  - gq{motion} formats text (join lines, wrap at textwidth)
+  - gw{motion} formats without moving cursor
+  - gU{motion} uppercase, gu{motion} lowercase
+  - g~ toggles case of motion
+  - gv reselects last visual selection (renamed to gvReselectLastVisual to avoid conflict)
+  - gi goes to last insert position and enters insert mode
+  - gI inserts at column 0
+  - gJ joins lines without space
+  - g; goes to older change position, g, to newer
+  - ga shows ASCII value of character under cursor
+  - g8 shows UTF-8 bytes of character
+- Files changed: 2 files (gCommands.ts new, vim/index.ts updated)
+- **Learnings for future iterations:**
+  - handleGCommand() is main entry point for g-prefix commands
+  - handleGOperator() handles operators like gU, gu, g~, gq, gw
+  - Avoid naming conflicts with existing exports (e.g., reselectLastVisual)
+---
+
+## 2026-01-14 - US-016
+Thread: http://localhost:8317/threads/T-019bbc10-e39e-7422-b0fa-6560328a7ae8
+- Implemented vim z-prefix scroll commands in src/lib/simulator/vim/zCommands.ts:
+  - zz centers current line on screen
+  - zt scrolls current line to top of screen
+  - zb scrolls current line to bottom of screen
+  - z<Enter> like zt but also moves to first non-blank
+  - z- like zb but also moves to first non-blank
+  - z. like zz but also moves to first non-blank
+  - zH scrolls screen half width left
+  - zL scrolls screen half width right
+  - zs scrolls screen to put cursor at start
+  - ze scrolls screen to put cursor at end
+- Returns scrollAction in result for UI to handle actual scrolling
+- Files changed: 2 files (zCommands.ts new, vim/index.ts updated)
+- **Learnings for future iterations:**
+  - ZCommandResult includes optional scrollAction for UI to process
+  - handleZScrollCommand() is main entry point
+  - Scroll amounts need visibleWidth parameter for horizontal scrolling
+---
+
+## 2026-01-14 - US-017 through US-025
+Thread: http://localhost:8317/threads/T-019bbc10-e39e-7422-b0fa-6560328a7ae8
+- Created complete tmux module in src/lib/simulator/tmux/:
+  - state.ts: Session management (create, rename, list, navigate sessions)
+  - windows.ts: Window management (create, kill, rename, move, switch windows)
+  - panes.ts: Pane splitting (horizontal/vertical), close, select, toggle zoom
+  - navigation.ts: Spatial pane navigation (left/right/up/down), next, last active, swap, break to window
+  - resize.ts: Pane resizing (left/right/up/down), cycle/apply layouts
+  - copyMode.ts: Copy mode (enter/exit, vim motions, selection, yank, search)
+  - paste.ts: Paste buffer management (paste, list, delete, add, select)
+  - commands.ts: Tmux command mode (parse/execute commands, history, completion)
+  - mouse.ts: Mouse mode (toggle, pane click, window click, border drag, scroll, copy mode drag)
+- Updated src/lib/simulator/index.ts to export vim and tmux as namespaces (to avoid conflicts)
+- Files changed: 10 files (9 new in tmux/, index.ts updated)
+- **Learnings for future iterations:**
+  - Use namespace exports when modules have conflicting function names
+  - TmuxState types already defined in types.ts
+  - Helper functions: getActiveSession(), getActiveWindow(), getActivePane()
+  - Each module has its own Result interface (TmuxStateResult, TmuxWindowResult, etc.)
+---
+
+## 2026-01-14 - US-028
+Thread: http://localhost:8317/threads/T-019bbc10-e39e-7422-b0fa-6560328a7ae8
+- Created src/lib/simulator/layout.ts for pane layout engine:
+  - calculatePaneLayout() computes pane positions using recursive tree algorithm
+  - recalculateLayout() updates dimensions on container resize
+  - getPaneBorderPositions() returns border coordinates for rendering
+  - Supports horizontal/vertical splits with minimum size enforcement (10x3 chars)
+---
+
+## 2026-01-14 - US-030, US-031, US-032, US-034
+Thread: http://localhost:8317/threads/T-019bbc10-e39e-7422-b0fa-6560328a7ae8
+- Updated src/components/KeyboardVisualizer.tsx:
+  - Last 5 keystrokes with timestamps and fade out (3s)
+  - Keyboard key styling (3D keycap effect)
+  - Modifier keys, special keys, pending operators, leader, tmux prefix
+- Created src/components/FileExplorer.tsx:
+  - Neo-tree style panel with toggle (F9 / Space e)
+  - File tree with folder icons, j/k navigation
+  - Full file operations (a/A, d, r, y/Y, x/p, H, /)
+- Created src/lib/simulator/filesystem.ts:
+  - In-memory file system with directory structure
+  - Pre-populated with src/, tests/, docs/, config/
+  - All file operations (create, read, update, delete, rename)
+- Created src/components/Picker.tsx:
+  - Modal overlay with fuzzy search
+  - Matched character highlighting
+  - j/k navigation, preview pane, multiple modes
+---

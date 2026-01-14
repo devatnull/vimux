@@ -11,3 +11,27 @@ export * from "./macros";
 export * from "./undo";
 export * from "./folding";
 export * from "./leader";
+export {
+  type GCommandResult,
+  gotoFirstLine,
+  gotoLocalDefinition,
+  gotoGlobalDefinition,
+  gotoFile,
+  gotoFileWithLine,
+  formatText,
+  formatTextKeepCursor,
+  uppercaseMotion,
+  lowercaseMotion,
+  toggleCaseMotion,
+  gotoLastInsertPosition,
+  insertAtColumn0,
+  joinLinesNoSpace,
+  gotoOlderChangePosition,
+  gotoNewerChangePosition,
+  showAsciiValue,
+  showUtf8Bytes,
+  type GCommand,
+  handleGCommand,
+  handleGOperator,
+} from "./gCommands";
+export * from "./zCommands";

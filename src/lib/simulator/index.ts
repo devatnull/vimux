@@ -1,3 +1,4 @@
 export * from "./types";
 export * from "./constants";
-export * from "./vim";
+export * as vim from "./vim";
+export * as tmux from "./tmux";

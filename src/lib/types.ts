@@ -1,4 +1,25 @@
-export type VimMode = "normal" | "insert" | "visual" | "command";
+// Re-export simulator types for compatibility
+export type {
+  VimMode,
+  VimBuffer,
+  VimState,
+  TmuxPane,
+  TmuxWindow,
+  TmuxSession,
+  TmuxState,
+  SimulatorState as FullSimulatorState,
+  CursorPosition,
+  VisualSelection,
+  SearchState,
+} from "./simulator/types";
+
+// SimulatorState for the store - uses full types to support simulator module integration
+export interface SimulatorState {
+  tmux: import("./simulator/types").TmuxState;
+  vim: import("./simulator/types").VimState;
+  keySequence: string[];
+  lastAction?: string;
+}
 
 export interface Shortcut {
   id: string;
@@ -20,83 +41,28 @@ export interface Lesson {
   estimatedMinutes: number;
 }
 
+export interface LessonStepValidation {
+  cursorPosition?: { line: number; col: number };
+  cursorLine?: number;
+  cursorCol?: number;
+  mode?: import("./simulator/types").VimMode;
+  bufferContent?: string[] | ((content: string[]) => boolean);
+  bufferContains?: string;
+  paneCount?: number;
+  windowCount?: number;
+  prefixActive?: boolean;
+  custom?: (state: SimulatorState) => boolean;
+}
+
 export interface LessonStep {
   id: string;
   instruction: string;
-  expectedKeys: string[];
+  expectedKeys?: string[];
+  validation?: LessonStepValidation;
   hint?: string;
   successMessage: string;
   setupState?: Partial<SimulatorState>;
-  validateState?: (state: SimulatorState) => boolean;
-}
-
-export interface TmuxPane {
-  id: string;
-  width: number;
-  height: number;
-  x: number;
-  y: number;
-  content: string[];
-  cursorX: number;
-  cursorY: number;
-  isActive: boolean;
-  title?: string;
-}
-
-export interface TmuxWindow {
-  id: string;
-  name: string;
-  panes: TmuxPane[];
-  activePaneId: string;
-  isActive: boolean;
-  index: number;
-}
-
-export interface TmuxSession {
-  id: string;
-  name: string;
-  windows: TmuxWindow[];
-  activeWindowId: string;
-  createdAt: number;
-}
-
-export interface VimBuffer {
-  id: string;
-  filename: string;
-  content: string[];
-  cursorLine: number;
-  cursorCol: number;
-  mode: VimMode;
-  modified: boolean;
-  readonly?: boolean;
-}
-
-export interface VimState {
-  buffers: VimBuffer[];
-  activeBufferId: string;
-  commandLine: string;
-  commandMode: boolean;
-  visualStart?: { line: number; col: number };
-  registers: Record<string, string>;
-  searchPattern?: string;
-  lastCommand?: string;
-  message?: string;
-  messageType?: "info" | "error" | "warning";
-  pendingOperator?: "d" | "y" | "c" | null;
-  count?: number;
-}
-
-export interface SimulatorState {
-  tmux: {
-    sessions: TmuxSession[];
-    activeSessionId: string;
-    prefixActive: boolean;
-    copyMode: boolean;
-    mouseMode: boolean;
-  };
-  vim: VimState;
-  keySequence: string[];
-  lastAction?: string;
+  context?: "tmux" | "vim";
 }
 
 export interface UserProgress {

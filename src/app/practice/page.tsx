@@ -5,37 +5,101 @@ import { Navigation } from "@/components/Navigation";
 import { Terminal } from "@/components/Terminal";
 import { KeyboardHandler } from "@/components/KeyboardHandler";
 import { KeyboardVisualizer } from "@/components/KeyboardVisualizer";
+import { ShortcutReference } from "@/components/ShortcutReference";
 import { useSimulatorStore } from "@/lib/store";
 import clsx from "clsx";
-import { RotateCcw, Info, Keyboard } from "lucide-react";
+import { RotateCcw, BookOpen, X } from "lucide-react";
 
-const tips = [
+const sampleFiles = [
   {
-    category: "tmux",
-    tips: [
-      "Press Ctrl+a then - to split horizontally",
-      "Press Ctrl+a then _ to split vertically",
-      "Use Ctrl+a h/j/k/l to navigate between panes",
-      "Press Ctrl+a c to create a new window",
-      "Press Ctrl+a 0-9 to switch windows",
+    name: "app.tsx",
+    content: [
+      "import React from 'react';",
+      "import { useState, useEffect } from 'react';",
+      "",
+      "interface User {",
+      "  id: string;",
+      "  name: string;",
+      "  email: string;",
+      "}",
+      "",
+      "export function App() {",
+      "  const [users, setUsers] = useState<User[]>([]);",
+      "  const [loading, setLoading] = useState(true);",
+      "",
+      "  useEffect(() => {",
+      "    fetchUsers().then(data => {",
+      "      setUsers(data);",
+      "      setLoading(false);",
+      "    });",
+      "  }, []);",
+      "",
+      "  if (loading) return <div>Loading...</div>;",
+      "",
+      "  return (",
+      "    <div className=\"container\">",
+      "      <h1>User Management</h1>",
+      "      <UserList users={users} />",
+      "    </div>",
+      "  );",
+      "}",
     ],
   },
   {
-    category: "neovim",
-    tips: [
-      "Use h/j/k/l for cursor movement in normal mode",
-      "Press i to enter insert mode, Esc to exit",
-      "Use w/b to jump between words",
-      "Press 0 for line start, $ for line end",
-      "Press gg for file start, G for file end",
-      "Press : to enter command mode",
+    name: "utils.ts",
+    content: [
+      "// Utility functions",
+      "",
+      "export function debounce<T extends (...args: any[]) => any>(",
+      "  func: T,",
+      "  wait: number",
+      "): (...args: Parameters<T>) => void {",
+      "  let timeout: NodeJS.Timeout | null = null;",
+      "",
+      "  return function (...args: Parameters<T>) {",
+      "    if (timeout) clearTimeout(timeout);",
+      "    timeout = setTimeout(() => func(...args), wait);",
+      "  };",
+      "}",
+      "",
+      "export function formatDate(date: Date): string {",
+      "  return new Intl.DateTimeFormat('en-US', {",
+      "    year: 'numeric',",
+      "    month: 'long',",
+      "    day: 'numeric',",
+      "  }).format(date);",
+      "}",
+      "",
+      "export function clamp(value: number, min: number, max: number): number {",
+      "  return Math.min(Math.max(value, min), max);",
+      "}",
+    ],
+  },
+  {
+    name: "config.json",
+    content: [
+      "{",
+      '  "name": "my-app",',
+      '  "version": "1.0.0",',
+      '  "scripts": {',
+      '    "dev": "next dev",',
+      '    "build": "next build",',
+      '    "start": "next start",',
+      '    "lint": "eslint . --ext .ts,.tsx"',
+      "  },",
+      '  "dependencies": {',
+      '    "react": "^18.2.0",',
+      '    "next": "^14.0.0",',
+      '    "typescript": "^5.0.0"',
+      "  }",
+      "}",
     ],
   },
 ];
 
 export default function PracticePage() {
   const { state, resetSimulator } = useSimulatorStore();
-  const [showTips, setShowTips] = useState(true);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   const activeBuffer = state.vim.buffers.find(
     (b) => b.id === state.vim.activeBufferId
@@ -49,67 +113,66 @@ export default function PracticePage() {
       <main className="pt-20 pb-12 px-4">
         <div className="max-w-7xl mx-auto">
           {/* Header */}
-          <div className="flex items-center justify-between mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
-              <h1 className="text-3xl font-bold text-[#c0caf5] mb-2">
-                Practice Mode
+              <h1 className="text-2xl md:text-3xl font-bold text-[#c0caf5] mb-2">
+                Free Practice Mode
               </h1>
-              <p className="text-[#a9b1d6]">
-                Free practice with tmux and Neovim. No lessons, just explore!
+              <p className="text-sm md:text-base text-[#a9b1d6]">
+                Full simulator with no constraints. Practice tmux splits, vim commands, and explore freely.
               </p>
             </div>
 
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setShowTips(!showTips)}
+                onClick={() => setShowShortcuts(!showShortcuts)}
                 className={clsx(
-                  "flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors",
-                  showTips
+                  "flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-sm transition-colors",
+                  showShortcuts
                     ? "bg-[#7aa2f7] text-[#1a1b26]"
                     : "bg-[#24283b] text-[#a9b1d6] hover:bg-[#2a2f45]"
                 )}
               >
-                <Info className="w-4 h-4" />
-                Tips
+                {showShortcuts ? <X className="w-4 h-4" /> : <BookOpen className="w-4 h-4" />}
+                <span className="hidden sm:inline">{showShortcuts ? "Hide Shortcuts" : "Shortcuts"}</span>
               </button>
               <button
                 onClick={resetSimulator}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#24283b] text-[#a9b1d6] hover:bg-[#2a2f45] transition-colors text-sm"
+                className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg bg-[#24283b] text-[#a9b1d6] hover:bg-[#2a2f45] transition-colors text-sm"
               >
                 <RotateCcw className="w-4 h-4" />
-                Reset
+                <span className="hidden sm:inline">Reset</span>
               </button>
             </div>
           </div>
 
-          <div className="grid lg:grid-cols-3 gap-8">
-            {/* Terminal */}
-            <div className="lg:col-span-2">
+          {/* Main Layout */}
+          <div className={clsx("flex flex-col lg:flex-row gap-6", showShortcuts && "")}>
+            {/* Terminal - Main Focus */}
+            <div className={clsx("w-full", showShortcuts ? "lg:w-2/3" : "")}>
               <Terminal />
 
-              {/* Keyboard Visualizer */}
-              <div className="mt-4">
+              {/* Key Visualizer - Always Visible */}
+              <div className="mt-4 overflow-x-auto">
                 <KeyboardVisualizer />
               </div>
 
-              {/* Status Info */}
-              <div className="mt-4 grid grid-cols-3 gap-4">
-                <div className="bg-[#24283b] rounded-lg p-4">
+              {/* Status Bar */}
+              <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
+                <div className="bg-[#24283b] rounded-lg p-3">
                   <div className="text-xs text-[#565f89] uppercase tracking-wider mb-1">
                     tmux Status
                   </div>
                   <div className="flex items-center gap-2">
                     {state.tmux.prefixActive ? (
-                      <span className="text-[#ff9e64] font-medium">
-                        PREFIX ACTIVE
-                      </span>
+                      <span className="text-[#ff9e64] font-medium">PREFIX</span>
                     ) : (
                       <span className="text-[#9ece6a]">Ready</span>
                     )}
                   </div>
                 </div>
 
-                <div className="bg-[#24283b] rounded-lg p-4">
+                <div className="bg-[#24283b] rounded-lg p-3">
                   <div className="text-xs text-[#565f89] uppercase tracking-wider mb-1">
                     Vim Mode
                   </div>
@@ -126,82 +189,55 @@ export default function PracticePage() {
                   </div>
                 </div>
 
-                <div className="bg-[#24283b] rounded-lg p-4">
+                <div className="bg-[#24283b] rounded-lg p-3">
                   <div className="text-xs text-[#565f89] uppercase tracking-wider mb-1">
-                    Cursor Position
+                    Cursor
                   </div>
-                  <div className="text-[#c0caf5] font-mono">
-                    {(activeBuffer?.cursorLine || 0) + 1}:
-                    {(activeBuffer?.cursorCol || 0) + 1}
+                  <div className="text-[#c0caf5] font-mono text-sm">
+                    {(activeBuffer?.cursorLine || 0) + 1}:{(activeBuffer?.cursorCol || 0) + 1}
+                  </div>
+                </div>
+
+                <div className="bg-[#24283b] rounded-lg p-3">
+                  <div className="text-xs text-[#565f89] uppercase tracking-wider mb-1">
+                    Panes
+                  </div>
+                  <div className="text-[#c0caf5] font-mono text-sm">
+                    {state.tmux.sessions.find((s) => s.id === state.tmux.activeSessionId)?.windows.find((w) => w.id === state.tmux.sessions.find((s) => s.id === state.tmux.activeSessionId)?.activeWindowId)?.panes.length || 1}
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Tips */}
+              <div className="mt-4 bg-[#24283b] rounded-lg p-3 md:p-4">
+                <div className="text-xs text-[#565f89] uppercase tracking-wider mb-2">
+                  Quick Start
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 text-xs md:text-sm">
+                  <div>
+                    <span className="text-[#9ece6a]">tmux:</span>
+                    <span className="text-[#a9b1d6] ml-2">Ctrl+a then - or _</span>
+                  </div>
+                  <div>
+                    <span className="text-[#9ece6a]">Navigate:</span>
+                    <span className="text-[#a9b1d6] ml-2">Ctrl+a then h/j/k/l</span>
+                  </div>
+                  <div>
+                    <span className="text-[#7aa2f7]">Vim:</span>
+                    <span className="text-[#a9b1d6] ml-2">h/j/k/l, i, Esc</span>
+                  </div>
+                  <div>
+                    <span className="text-[#7aa2f7]">Commands:</span>
+                    <span className="text-[#a9b1d6] ml-2">:w :q dd yy p</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Tips Panel */}
-            {showTips && (
-              <div className="space-y-6">
-                <div className="bg-[#24283b] rounded-lg p-6">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Keyboard className="w-5 h-5 text-[#7aa2f7]" />
-                    <h3 className="font-semibold text-[#c0caf5]">
-                      Quick Reference
-                    </h3>
-                  </div>
-
-                  {tips.map((section) => (
-                    <div key={section.category} className="mb-6 last:mb-0">
-                      <h4
-                        className={clsx(
-                          "text-sm font-medium mb-2",
-                          section.category === "tmux"
-                            ? "text-[#9ece6a]"
-                            : "text-[#7aa2f7]"
-                        )}
-                      >
-                        {section.category === "tmux" ? "tmux" : "Neovim"}
-                      </h4>
-                      <ul className="space-y-2">
-                        {section.tips.map((tip, i) => (
-                          <li
-                            key={i}
-                            className="text-sm text-[#a9b1d6] pl-3 border-l-2 border-[#414868]"
-                          >
-                            {tip}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="bg-[#24283b] rounded-lg p-6">
-                  <h3 className="font-semibold text-[#c0caf5] mb-4">
-                    Try These Exercises
-                  </h3>
-                  <ol className="space-y-3 text-sm text-[#a9b1d6]">
-                    <li className="flex gap-2">
-                      <span className="text-[#7aa2f7] font-mono">1.</span>
-                      Split the terminal into 2 panes
-                    </li>
-                    <li className="flex gap-2">
-                      <span className="text-[#7aa2f7] font-mono">2.</span>
-                      Navigate between panes
-                    </li>
-                    <li className="flex gap-2">
-                      <span className="text-[#7aa2f7] font-mono">3.</span>
-                      Move to line 5 in the editor
-                    </li>
-                    <li className="flex gap-2">
-                      <span className="text-[#7aa2f7] font-mono">4.</span>
-                      Enter insert mode and type something
-                    </li>
-                    <li className="flex gap-2">
-                      <span className="text-[#7aa2f7] font-mono">5.</span>
-                      Return to normal mode
-                    </li>
-                  </ol>
-                </div>
+            {/* Shortcut Reference Panel */}
+            {showShortcuts && (
+              <div className="w-full lg:w-1/3">
+                <ShortcutReference />
               </div>
             )}
           </div>

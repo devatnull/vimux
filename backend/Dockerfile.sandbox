@@ -1,0 +1,63 @@
+# =============================================================================
+# Hardened Neovim + Tmux Sandbox Container
+# =============================================================================
+FROM ubuntu:24.04 AS base
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install only what's needed
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    neovim \
+    tmux \
+    git \
+    curl \
+    ca-certificates \
+    locales \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Set locale
+RUN locale-gen en_US.UTF-8
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+
+# Create non-root user
+RUN useradd -m -s /bin/bash -u 1000 learner
+
+# Setup practice directory with sample files
+RUN mkdir -p /home/learner/practice && \
+    chown -R learner:learner /home/learner
+
+# Copy practice files
+COPY --chown=learner:learner containers/practice/ /home/learner/practice/
+
+# Basic neovim config for learning
+RUN mkdir -p /home/learner/.config/nvim && \
+    chown -R learner:learner /home/learner/.config
+
+COPY --chown=learner:learner containers/nvim-config/ /home/learner/.config/nvim/
+
+# Basic tmux config for learning
+COPY --chown=learner:learner containers/tmux.conf /home/learner/.tmux.conf
+
+# Set working directory
+WORKDIR /home/learner/practice
+
+# Switch to non-root user
+USER learner
+
+# Default command
+CMD ["tmux", "new-session", "-s", "learn"]
+
+# =============================================================================
+# Security: This container runs with these restrictions (applied at runtime):
+# - --network none (no internet access)
+# - --read-only (read-only filesystem)
+# - --tmpfs /tmp (writable /tmp in memory)
+# - --memory 256m (memory limit)
+# - --cpus 0.5 (CPU limit)
+# - --cap-drop ALL (drop all capabilities)
+# - --security-opt no-new-privileges (prevent privilege escalation)
+# - --pids-limit 50 (limit number of processes)
+# =============================================================================
