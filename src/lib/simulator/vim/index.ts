@@ -5,3 +5,5 @@ export * from "./insertMode";
 export * from "./visualMode";
 export * from "./commands";
 export * from "./search";
+export * from "./registers";
+export * from "./marks";
