@@ -3,3 +3,4 @@ export * from "./operators";
 export * from "./textObjects";
 export * from "./insertMode";
 export * from "./visualMode";
+export * from "./commands";

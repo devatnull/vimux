@@ -162,3 +162,31 @@ Thread: http://localhost:8317/threads/T-019bbbbe-402a-741a-b654-8a534e204449
   - handleInsertModeKey() is main entry point for processing keys in insert mode
   - executeInsertCommand() handles insert mode entry commands (i, a, I, A, o, O, gi, gI)
 ---
+
+## 2026-01-14 - US-007
+Thread: http://localhost:8317/threads/T-019bbbc5-7313-761b-abcf-d6151d7a76a0
+- Implemented complete vim visual mode in src/lib/simulator/vim/visualMode.ts:
+  - v enters character-wise visual mode
+  - V enters line-wise visual mode
+  - Ctrl-v enters block-wise visual mode
+  - All motions extend selection in visual mode via visualModeExtendSelection()
+  - o swaps cursor to other end of selection (visualSwapEnds)
+  - O in block mode moves to other corner (visualBlockSwapCorner)
+  - gv reselects last visual selection (reselectLastVisual)
+  - d/y/c delete/yank/change selection with proper register handling
+  - >/< indent/dedent selected lines
+  - ~ toggles case of selection
+  - u/U lowercase/uppercase selection
+  - J joins selected lines
+  - Escape cancels visual mode and stores lastVisualSelection
+- Helper functions: getVisualRange for computing TextRange from selection
+- Block mode operations handle column-based edits across lines
+- Updated src/lib/simulator/vim/index.ts to export visualMode
+- Files changed: 2 files (visualMode.ts new, index.ts updated)
+- **Learnings for future iterations:**
+  - Visual mode stores selection in state.visualSelection with start/end CursorPosition
+  - Mode stored in buffer.mode ("visual" | "visual-line" | "visual-block")
+  - lastVisualSelection preserved for gv reselect functionality
+  - Block mode operations iterate line-by-line applying column ranges
+  - handleVisualModeKey() is main entry point for visual mode key processing
+---
