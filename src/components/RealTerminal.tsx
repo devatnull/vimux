@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -28,13 +28,62 @@ export function RealTerminal({
   const terminalInstance = useRef<Terminal | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
   const mountedRef = useRef(true);
+  const terminalOpenRef = useRef(false);
+  const pendingWritesRef = useRef<string[]>([]);
 
   const [status, setStatus] = useState<ConnectionStatus>(conn.getStatus());
   const [statusMessage, setStatusMessage] = useState("");
 
+  // Stable callback refs to avoid useEffect re-runs
+  const onReadyRef = useRef(onReady);
+  const onDisconnectRef = useRef(onDisconnect);
+  const onErrorRef = useRef(onError);
+  const onKeyRef = useRef(onKey);
+  
+  useEffect(() => {
+    onReadyRef.current = onReady;
+    onDisconnectRef.current = onDisconnect;
+    onErrorRef.current = onError;
+    onKeyRef.current = onKey;
+  });
+
+  // Write to terminal, buffering if not yet open
+  const writeToTerminal = useCallback((data: string) => {
+    if (!mountedRef.current) return;
+    
+    if (terminalOpenRef.current && terminalInstance.current) {
+      try {
+        terminalInstance.current.write(data);
+      } catch (e) {
+        console.error("Failed to write to terminal:", e);
+      }
+    } else {
+      // Buffer writes until terminal is open
+      pendingWritesRef.current.push(data);
+    }
+  }, []);
+
+  // Flush pending writes when terminal opens
+  const flushPendingWrites = useCallback(() => {
+    if (!terminalInstance.current || !terminalOpenRef.current) return;
+    
+    const pending = pendingWritesRef.current;
+    pendingWritesRef.current = [];
+    
+    for (const data of pending) {
+      try {
+        terminalInstance.current.write(data);
+      } catch (e) {
+        console.error("Failed to flush write:", e);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (!terminalRef.current) return;
     mountedRef.current = true;
+    terminalOpenRef.current = false;
+    pendingWritesRef.current = [];
 
     // Create terminal UI
     const terminal = new Terminal({
@@ -75,22 +124,6 @@ export function RealTerminal({
     terminal.loadAddon(new WebLinksAddon());
     terminalInstance.current = terminal;
 
-    // Open terminal after a tick
-    const openTimer = setTimeout(() => {
-      if (!mountedRef.current || !terminalRef.current) return;
-      try {
-        terminal.open(terminalRef.current);
-        setTimeout(() => {
-          if (mountedRef.current && fitAddon.current) {
-            try {
-              fitAddon.current.fit();
-              conn.sendResize(terminal.cols, terminal.rows);
-            } catch { /* ignore */ }
-          }
-        }, 50);
-      } catch { /* Terminal may be disposed */ }
-    }, 10);
-
     // Wire up terminal input to connection
     terminal.onData((data) => {
       conn.sendInput(data);
@@ -99,48 +132,79 @@ export function RealTerminal({
     // Wire up key events for lesson validation
     terminal.onKey(({ domEvent }) => {
       const normalizedKey = normalizeKeyFromDomEvent(domEvent);
-      if (normalizedKey && onKey) {
-        onKey(normalizedKey);
+      if (normalizedKey && onKeyRef.current) {
+        onKeyRef.current(normalizedKey);
       }
     });
 
-    // Wire up connection output to terminal
+    // IMPORTANT: Subscribe to messages BEFORE connecting
+    // This ensures we don't miss any output
     const unsubMessage = conn.onMessage((data) => {
-      if (mountedRef.current && terminalInstance.current) {
-        try {
-          terminalInstance.current.write(data);
-        } catch { /* Terminal may be disposed */ }
-      }
+      writeToTerminal(data);
     });
 
-    // Wire up connection status
+    // Subscribe to status changes
     const unsubStatus = conn.onStatus((newStatus, message) => {
       if (!mountedRef.current) return;
       setStatus(newStatus);
       setStatusMessage(message);
       
       if (newStatus === "connected") {
-        terminalInstance.current?.focus();
-        onReady?.();
-        if (terminalInstance.current) {
-          conn.sendResize(terminalInstance.current.cols, terminalInstance.current.rows);
-        }
+        // Focus and resize when connected
+        setTimeout(() => {
+          if (!mountedRef.current || !terminalInstance.current) return;
+          terminalInstance.current.focus();
+          if (fitAddon.current) {
+            try {
+              fitAddon.current.fit();
+              conn.sendResize(terminalInstance.current.cols, terminalInstance.current.rows);
+            } catch { /* ignore */ }
+          }
+        }, 50);
+        onReadyRef.current?.();
       } else if (newStatus === "disconnected") {
-        onDisconnect?.();
+        onDisconnectRef.current?.();
       } else if (newStatus === "error") {
-        onError?.(message);
+        onErrorRef.current?.(message);
       }
     });
 
-    // Start connection if not already connected
+    // Open terminal in DOM
+    const openTerminal = () => {
+      if (!mountedRef.current || !terminalRef.current || terminalOpenRef.current) return;
+      
+      try {
+        terminal.open(terminalRef.current);
+        terminalOpenRef.current = true;
+        
+        // Fit and flush any pending output
+        setTimeout(() => {
+          if (!mountedRef.current || !fitAddon.current) return;
+          try {
+            fitAddon.current.fit();
+            flushPendingWrites();
+            // Send initial resize
+            conn.sendResize(terminal.cols, terminal.rows);
+          } catch { /* ignore */ }
+        }, 50);
+      } catch (e) {
+        console.error("Failed to open terminal:", e);
+      }
+    };
+
+    // Open after a tick to ensure DOM is ready
+    const openTimer = setTimeout(openTerminal, 10);
+
+    // Start connection (handlers are already subscribed above)
     conn.connect();
 
     // Resize observer
     let resizeObserver: ResizeObserver | null = null;
-    const resizeTimer = setTimeout(() => {
+    const setupResizeObserver = () => {
       if (!terminalRef.current || !mountedRef.current) return;
+      
       resizeObserver = new ResizeObserver(() => {
-        if (!mountedRef.current || !fitAddon.current || !terminalInstance.current) return;
+        if (!mountedRef.current || !fitAddon.current || !terminalInstance.current || !terminalOpenRef.current) return;
         requestAnimationFrame(() => {
           if (!mountedRef.current || !fitAddon.current || !terminalInstance.current) return;
           try {
@@ -150,10 +214,13 @@ export function RealTerminal({
         });
       });
       resizeObserver.observe(terminalRef.current);
-    }, 100);
+    };
+    
+    const resizeTimer = setTimeout(setupResizeObserver, 100);
 
     return () => {
       mountedRef.current = false;
+      terminalOpenRef.current = false;
       clearTimeout(openTimer);
       clearTimeout(resizeTimer);
       resizeObserver?.disconnect();
@@ -164,9 +231,10 @@ export function RealTerminal({
       } catch { /* Already disposed */ }
       terminalInstance.current = null;
       fitAddon.current = null;
+      pendingWritesRef.current = [];
       // DON'T disconnect - keep the connection alive for reuse
     };
-  }, [onReady, onDisconnect, onError, onKey]);
+  }, [writeToTerminal, flushPendingWrites]);
 
   const handleReconnect = () => {
     conn.reconnect();

@@ -1,5 +1,4 @@
 import Docker from 'dockerode';
-import { PassThrough } from 'stream';
 
 // =============================================================================
 // Types
@@ -84,19 +83,13 @@ export class ContainerManager {
       AttachStdout: true,
       AttachStderr: true,
       
-      // Security hardening
+      // Security hardening (relaxed for tmux compatibility)
       HostConfig: {
         // No network access
         NetworkMode: 'none',
         
-        // Read-only root filesystem
-        ReadonlyRootfs: true,
-        
-        // Writable tmpfs for /tmp and home
-        Tmpfs: {
-          '/tmp': 'rw,noexec,nosuid,size=64m',
-          '/home/learner/.local': 'rw,noexec,nosuid,size=32m',
-        },
+        // Allow writable filesystem for tmux sockets and temp files
+        // ReadonlyRootfs: true,  // Disabled - tmux needs to write to various locations
         
         // Resource limits
         Memory: this.CONTAINER_LIMITS.Memory,
@@ -104,13 +97,9 @@ export class ContainerManager {
         NanoCpus: this.CONTAINER_LIMITS.NanoCpus,
         PidsLimit: this.CONTAINER_LIMITS.PidsLimit,
         
-        // Drop all capabilities
-        CapDrop: ['ALL'],
-        
         // Security options
         SecurityOpt: [
           'no-new-privileges:true',
-          'seccomp=unconfined', // TODO: Add custom seccomp profile
         ],
         
         // Auto-remove on exit (backup cleanup)
@@ -118,12 +107,6 @@ export class ContainerManager {
         
         // No privileged mode
         Privileged: false,
-        
-        // Limit ulimits
-        Ulimits: [
-          { Name: 'nofile', Soft: 1024, Hard: 2048 },
-          { Name: 'nproc', Soft: 50, Hard: 100 },
-        ],
       },
       
       // User
@@ -146,10 +129,7 @@ export class ContainerManager {
       },
     });
     
-    // Start container
-    await container.start();
-    
-    // Attach to container
+    // Attach BEFORE starting container to catch all output
     const stream = await container.attach({
       stream: true,
       stdin: true,
@@ -158,19 +138,17 @@ export class ContainerManager {
       hijack: true,
     });
     
-    // Handle output
-    const stdout = new PassThrough();
-    const stderr = new PassThrough();
-    
-    container.modem.demuxStream(stream, stdout, stderr);
-    
-    stdout.on('data', (chunk: Buffer) => {
+    // Handle output - TTY mode means stream is already raw (no demux needed)
+    stream.on('data', (chunk: Buffer) => {
       onOutput(chunk.toString('utf8'));
     });
     
-    stderr.on('data', (chunk: Buffer) => {
-      onOutput(chunk.toString('utf8'));
+    stream.on('error', (err: Error) => {
+      console.error(`[${sessionId}] Stream error:`, err);
     });
+    
+    // Start container after attaching
+    await container.start();
     
     // Store container info
     const containerId = container.id;

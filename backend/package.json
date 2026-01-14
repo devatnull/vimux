@@ -7,6 +7,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
+    "test:connection": "node test-connection.js",
     "docker:build": "docker build -t terminal-sandbox -f Dockerfile.sandbox .",
     "docker:test": "docker run --rm -it --network none --memory 256m --cpus 0.5 terminal-sandbox"
   },

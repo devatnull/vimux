@@ -244,42 +244,14 @@ wss.on('connection', async (ws: WebSocket, req: http.IncomingMessage) => {
 // =============================================================================
 
 function sanitizeInput(input: string): string | null {
-  // Block control characters except common ones
-  const allowedControlChars = [
-    '\x03', // Ctrl+C
-    '\x04', // Ctrl+D
-    '\x1a', // Ctrl+Z
-    '\x1b', // Escape
-    '\r',   // Enter
-    '\n',   // Newline
-    '\t',   // Tab
-    '\x7f', // Backspace
-  ];
+  // For terminal input, we need to pass through most things including:
+  // - All printable ASCII (32-126)
+  // - Control characters for terminal control (Ctrl+C, Ctrl+D, etc)
+  // - Escape sequences for arrow keys, function keys, etc (\x1b[A, \x1b[B, etc)
+  // - Carriage return, newline, tab, backspace
   
-  let sanitized = '';
-  for (const char of input) {
-    const code = char.charCodeAt(0);
-    
-    // Allow printable ASCII
-    if (code >= 32 && code <= 126) {
-      sanitized += char;
-      continue;
-    }
-    
-    // Allow specific control characters
-    if (allowedControlChars.includes(char)) {
-      sanitized += char;
-      continue;
-    }
-    
-    // Allow escape sequences (for arrow keys etc)
-    if (code === 27) {
-      sanitized += char;
-      continue;
-    }
-  }
-  
-  // Block potentially dangerous command patterns
+  // Only block obviously dangerous complete command patterns
+  // Note: This is a basic check - the container is sandboxed anyway
   const dangerousPatterns = [
     /rm\s+-rf\s+\//i,
     /mkfs/i,
@@ -289,13 +261,14 @@ function sanitizeInput(input: string): string | null {
   ];
   
   for (const pattern of dangerousPatterns) {
-    if (pattern.test(sanitized)) {
+    if (pattern.test(input)) {
       console.warn('Blocked dangerous input pattern');
       return null;
     }
   }
   
-  return sanitized;
+  // Pass through the input as-is - terminal needs raw escape sequences
+  return input;
 }
 
 // =============================================================================
