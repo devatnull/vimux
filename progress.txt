@@ -224,3 +224,34 @@ Thread: http://localhost:8317/threads/T-019bbbcb-c584-7239-9f58-79a8e0f024f9
   - Command history stored in state.commandLineHistory, index in commandLineHistoryIndex
   - Use explicit type-safe helper functions for VimSettings updates to avoid TypeScript inference issues
 ---
+
+## 2026-01-14 - US-010
+Thread: http://localhost:8317/threads/T-019bbbda-40bd-7698-8128-97a5a771ae27
+- Implemented comprehensive vim registers system in src/lib/simulator/vim/registers.ts:
+  - getRegisterContentExtended() extends base getRegisterContent with %, #, /, = registers
+  - setRegisterContent() for setting named/special registers with clipboard API integration
+  - getAllRegisters() returns all registers with descriptions for :registers display
+  - formatRegistersDisplay() formats registers for command output
+  - readFromClipboard/writeToClipboard for browser clipboard integration
+  - syncClipboardToRegister() syncs clipboard content to + or * registers
+  - updateLastInsertRegister/updateLastCommandRegister/updateSearchRegister for special registers
+  - getWordUnderCursor/getWORDUnderCursor helper functions
+- Implemented comprehensive vim marks system in src/lib/simulator/vim/marks.ts:
+  - setMark() for setting local (a-z) and global (A-Z) marks
+  - getMark() retrieves marks including special marks (., ^, ", ', [, ], <, >)
+  - gotoMark() navigates to mark with exact (`) or line (') positioning
+  - gotoMarkLine/gotoMarkExact wrapper functions
+  - gotoPreviousPosition() for '' navigation
+  - deleteMark/deleteMarks/deleteAllMarks for mark deletion
+  - getAllMarks() and formatMarksDisplay() for :marks command
+  - setLastChangePosition/setChangeRange/setLastExitPosition for automatic marks
+  - navigateJumplistBackward/Forward for Ctrl-o/Ctrl-i
+  - navigateChangelistBackward/Forward for g;/g,
+- Updated src/lib/simulator/vim/index.ts to export registers and marks modules
+- Files changed: 3 files (registers.ts new, marks.ts new, index.ts updated)
+- **Learnings for future iterations:**
+  - When adding new modules with export functions, check for naming conflicts with existing exports
+  - operators.ts already has getRegisterContent and storeInRegister - use different names or import from there
+  - motions.ts has addToJumplist - import from motions.ts instead of redefining
+  - Use `void _removed` pattern to satisfy ESLint when destructuring to remove keys
+---
