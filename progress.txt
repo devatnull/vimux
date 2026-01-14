@@ -6,6 +6,7 @@
 - Pre-existing lint errors in page.tsx and components exist; ignore them
 - Operator functions live in src/lib/simulator/vim/operators.ts
 - When spreading state with null assignments, always add explicit `: VimState` type annotation to avoid TypeScript inference narrowing
+- Text objects live in src/lib/simulator/vim/textObjects.ts; use executeTextObject(state, type, objectKey) as main entry point
 
 ---
 
@@ -108,4 +109,29 @@ Thread: http://localhost:8317/threads/T-019bbbaf-e594-7431-bfd1-469e62504d88
   - executeOperator() and executeOperatorWithMotion() are main entry points
   - getRegisterContent() retrieves from any register type (named, numbered, special)
   - deleteRange handles both linewise and charwise deletions with proper cursor positioning
+---
+
+## 2026-01-14 - US-005
+Thread: http://localhost:8317/threads/T-019bbbb7-f910-7378-88d8-49d010166129
+- Implemented complete vim text objects in src/lib/simulator/vim/textObjects.ts:
+  - iw/aw: inner/a word (aw includes trailing/leading space)
+  - iW/aW: inner/a WORD (whitespace-delimited)
+  - is/as: inner/a sentence (ends at .!?)
+  - ip/ap: inner/a paragraph (blank line separated)
+  - i"/a": inner/a double-quoted string
+  - i'/a': inner/a single-quoted string
+  - i`/a`: inner/a backtick string
+  - i(/a( or ib/ab: inner/a parentheses block
+  - i[/a[: inner/a bracket block
+  - i{/a{ or iB/aB: inner/a brace block
+  - i</a<: inner/a angle bracket block
+  - it/at: inner/a tag block (HTML/XML)
+- Updated src/lib/simulator/vim/index.ts to export textObjects
+- Files changed: 2 files (textObjects.ts new, index.ts updated)
+- **Learnings for future iterations:**
+  - Text objects return TextObjectResult with startLine/startCol/endLine/endCol/linewise
+  - executeTextObject(state, type, objectKey) is the main entry point with type "i" or "a"
+  - textObjectToMotionResult() converts TextObjectResult to MotionResult for operator integration
+  - Bracket matching uses depth tracking to handle nested brackets
+  - Tag matching handles nested tags with same name using depth counter
 ---
