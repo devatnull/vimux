@@ -9,6 +9,7 @@
 - Text objects live in src/lib/simulator/vim/textObjects.ts; use executeTextObject(state, type, objectKey) as main entry point
 - Command mode functions live in src/lib/simulator/vim/commands.ts; use handleCommandModeKey() for key processing, executeCommand() for command execution
 - Macro functions live in src/lib/simulator/vim/macros.ts; use prepareMacroExecution() to get keystrokes array, caller is responsible for executing them
+- Leader key functions live in src/lib/simulator/vim/leader.ts; use handleLeaderKey() for processing leader sequences, enterLeaderMode() to activate
 
 ---
 
@@ -331,4 +332,61 @@ Thread: http://localhost:8317/threads/T-019bbbec-4388-7091-8ef6-c243c9e3acfe
   - RepeatableCommand uses JSON.stringify/parse for storing in lastCommand string field
   - Time parsing supports seconds (s), minutes (m), hours (h), days (d)
   - undoLineChanges attempts to find snapshot where cursor was on same line
+---
+
+## 2026-01-14 - US-013
+Thread: http://localhost:8317/threads/T-019bbbf4-6ef2-77ea-8771-806fcb0b9ad1
+- Implemented complete vim folding system in src/lib/simulator/vim/folding.ts:
+  - za toggles fold under cursor
+  - zo opens fold, zc closes fold
+  - zO/zC opens/closes all folds recursively under cursor
+  - zR opens all folds in file, zM closes all folds
+  - zm increases fold level (close largest open), zr decreases (open smallest closed)
+  - zj/zk move to next/previous fold
+  - [z moves to start of fold, ]z to end
+  - zd deletes fold, zE deletes all folds
+  - Indent-based fold calculation via calculateIndentFolds()
+  - getVisibleLines() for UI to render folded content
+  - getFoldIndicator() generates fold preview text ("+-- N lines: preview...")
+  - mapVisualLineToActual/mapActualLineToVisual for cursor positioning
+  - executeFoldCommand() and handleFoldKey() for key processing
+- Updated src/lib/simulator/vim/index.ts to export folding module
+- Files changed: 2 files (folding.ts new, index.ts updated)
+- **Learnings for future iterations:**
+  - Fold type already existed in types.ts with startLine, endLine, collapsed
+  - Use getInnermostFoldAtLine() for innermost fold at cursor
+  - Folding uses indent levels from tabstop setting for automatic fold generation
+  - getVisibleLines() returns array with lineIndex and isFolded flag for rendering
+---
+
+## 2026-01-14 - US-014
+Thread: http://localhost:8317/threads/T-019bbc06-40f5-708e-bb6f-4f0d197cd328
+- Implemented complete vim leader key system in src/lib/simulator/vim/leader.ts:
+  - Space activates leader mode with 2-second timeout via enterLeaderMode()
+  - Leader mode shows 'LEADER' in status bar, tracks key sequence
+  - LEADER_MAPPINGS defines all Space+key sequences with sub-mappings
+  - Space Space - find files, Space / - grep search, Space e - toggle explorer
+  - Space f* - file finding (ff/fg/fr/fc/fb)
+  - Space g* - git actions (gb/gl/gs/gd/gg)
+  - Space s* - search actions (sb/sg/sw/sh/sk)
+  - Space t* - terminal actions (tf/tb)
+  - Space b* - buffer actions (bd delete, bn/bp next/prev)
+  - Space u* - toggle options (us spell, uw wrap, ul line numbers, ud diagnostics, etc.)
+  - Space c* - code actions (ca action, cr rename, cd definition, cf format)
+  - Space v* - view actions (vv format, vs/vh splits)
+  - Space w* - window navigation (wh/wj/wk/wl focus, wq close, w= equalize)
+  - Two-key sequences work via nested subMappings (e.g., Space g b for git branches)
+  - handleLeaderKey() processes keys with timeout checking
+  - executeLeaderAction() performs actual actions (toggles, buffer ops, etc.)
+  - getAvailableLeaderMappings() and getLeaderMappingHelp() for UI display
+- Added leaderActive, leaderKeySequence, leaderTimeoutAt fields to VimState in types.ts
+- Updated constants.ts to initialize leader state fields
+- Updated src/lib/simulator/vim/index.ts to export leader module
+- Files changed: 4 files (leader.ts new, types.ts, constants.ts, vim/index.ts updated)
+- **Learnings for future iterations:**
+  - Leader mode uses timeout to auto-exit (LEADER_TIMEOUT_MS = 2000ms)
+  - LeaderMapping interface supports nested subMappings for multi-key sequences
+  - findMapping() recursively searches for exact or partial matches
+  - Some toggle actions directly modify state.settings (wrap, line numbers, etc.)
+  - Buffer operations (delete, next, prev) are handled in executeLeaderAction
 ---
