@@ -135,3 +135,30 @@ Thread: http://localhost:8317/threads/T-019bbbb7-f910-7378-88d8-49d010166129
   - Bracket matching uses depth tracking to handle nested brackets
   - Tag matching handles nested tags with same name using depth counter
 ---
+
+## 2026-01-14 - US-006
+Thread: http://localhost:8317/threads/T-019bbbbe-402a-741a-b654-8a534e204449
+- Implemented complete vim insert mode in src/lib/simulator/vim/insertMode.ts:
+  - i enters insert before cursor, a after cursor
+  - I enters insert at first non-whitespace, A at end of line
+  - o opens new line below and enters insert, O opens above
+  - gi goes to last insert position and enters insert
+  - gI enters insert at column 0
+  - Escape/Ctrl-[ exits insert mode (cursor moves left one if not at start)
+  - Backspace deletes character before cursor, joins lines if at start
+  - Enter creates new line with proper auto-indent and smart-indent
+  - Tab inserts tab or spaces based on expandtab/tabstop settings
+  - Ctrl-w deletes word before cursor
+  - Ctrl-u deletes to start of line
+  - Ctrl-t/Ctrl-d indent/dedent current line
+  - Ctrl-n/Ctrl-p trigger completion (shows message in simulator)
+  - Ctrl-r{register} inserts register contents
+- Updated src/lib/simulator/vim/index.ts to export insertMode
+- Files changed: 2 files (insertMode.ts new, index.ts updated)
+- **Learnings for future iterations:**
+  - Use local getActiveBuffer wrapper that throws on missing buffer to satisfy TypeScript type narrowing
+  - Insert mode tracks lastInsertedText for register storage and dot-repeat
+  - insertModeStartCol tracks where insert mode started for Escape cursor positioning
+  - handleInsertModeKey() is main entry point for processing keys in insert mode
+  - executeInsertCommand() handles insert mode entry commands (i, a, I, A, o, O, gi, gI)
+---
