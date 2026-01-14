@@ -54,3 +54,30 @@ Thread: http://localhost:8317/threads/T-019bbba3-31c9-71e4-9948-37966264ac64
   - Word boundaries use WORD_SEPARATORS constant from constants.ts
   - executeMotion() is the main entry point for applying motions with count support
 ---
+
+## 2026-01-14 - US-003
+Thread: http://localhost:8317/threads/T-019bbba9-8793-745b-94f7-003c0442b18f
+- Implemented advanced vim motions in src/lib/simulator/vim/motions.ts:
+  - % (motionPercent): Bracket matching for ()[]{}
+  - [[ and ]] (motionDoubleBracketBackward/Forward): Jump to function/class definitions
+  - [] and ][ (motionBracketEndBackward/Forward): Jump to closing braces
+  - H/M/L (motionH_screen/M_screen/L_screen): Screen-relative line navigation
+  - Ctrl-d/Ctrl-u (motionCtrlD/CtrlU): Half-page scrolling with ScrollResult type
+  - Ctrl-f/Ctrl-b (motionCtrlF/CtrlB): Full-page scrolling
+  - n/N (motionSearchNext/Prev): Repeat search forward/backward using searchState
+  - ' and ` (motionMarkLine/MarkExact): Mark navigation (line vs exact position)
+  - '' (motionPreviousPosition): Jump to previous position
+  - Ctrl-o/Ctrl-i (motionCtrlO/CtrlI): Jumplist navigation with position tracking
+  - gi (motionGI): Go to last insert position
+  - gd (motionGD): Go to local declaration (first occurrence of word)
+  - * and # (motionStar/Hash): Search word under cursor forward/backward
+- Added addToJumplist() helper function for jumplist management
+- Extended executeMotion() switch statement with all new motion keys
+- Files changed: src/lib/simulator/vim/motions.ts
+- **Learnings for future iterations:**
+  - ScrollResult extends MotionResult with scrollOffset for viewport management
+  - Screen motions (H/M/L, Ctrl-d/u/f/b) need visibleStartLine/visibleEndLine from the UI
+  - Mark navigation uses buffer.marks for local (a-z) and state.globalMarks for global (A-Z)
+  - Star/Hash motions return both result and pattern for search highlighting
+  - Jumplist has max 100 entries; managed via addToJumplist helper
+---
