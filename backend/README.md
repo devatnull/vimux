@@ -24,7 +24,7 @@ Hetzner VPS (Ubuntu 24.04)
 
 SSH into your Hetzner server:
 ```bash
-ssh root@159.69.189.116
+ssh root@YOUR_SERVER_IP
 ```
 
 Run the setup script:
@@ -50,7 +50,7 @@ echo "YOUR_PUBLIC_KEY_HERE" >> /home/termuser/.ssh/authorized_keys
 
 Test SSH access in a NEW terminal:
 ```bash
-ssh termuser@159.69.189.116
+ssh termuser@YOUR_SERVER_IP
 ```
 
 Only if that works, restart SSH:
@@ -61,7 +61,7 @@ sudo systemctl restart sshd
 ### 3. Deploy Application (as termuser)
 
 ```bash
-ssh termuser@159.69.189.116
+ssh termuser@YOUR_SERVER_IP
 
 cd /opt/terminal-learning
 
@@ -69,7 +69,7 @@ cd /opt/terminal-learning
 git clone https://github.com/YOUR_REPO.git .
 
 # Or upload backend files:
-# scp -r backend/* termuser@159.69.189.116:/opt/terminal-learning/
+# scp -r backend/* termuser@YOUR_SERVER_IP:/opt/terminal-learning/
 
 # Build Docker image
 docker build -t terminal-sandbox -f Dockerfile.sandbox .
