@@ -305,3 +305,30 @@ Thread: http://localhost:8317/threads/T-019bbbe5-fc2f-7144-a068-b3ca0e2e5c48
   - recordingMacro state holds current register being recorded, null when not recording
   - lastPlayedMacro tracks register for @@ repeat functionality
 ---
+
+## 2026-01-14 - US-012
+Thread: http://localhost:8317/threads/T-019bbbec-4388-7091-8ef6-c243c9e3acfe
+- Implemented comprehensive vim undo/redo system in src/lib/simulator/vim/undo.ts:
+  - u undoes last change via undo(state, count)
+  - Ctrl-r redoes via redo(state, count)
+  - Linear undo/redo using existing undoStack/redoStack on VimBuffer
+  - g- (undoOlderState) and g+ (undoNewerState) for traversing undo tree
+  - :earlier {time} and :later {time} commands with time parsing (s/m/h/d)
+  - :undolist via getUndoList() shows undo history with timestamps
+  - U (undoLineChanges) undoes all changes on current line
+  - Changes grouped via BufferSnapshot with timestamps
+- Implemented dot repeat (.) functionality:
+  - RepeatableCommand interface stores operator/motion/count/insertedText
+  - recordOperatorMotionCommand(), recordChangeCommand(), recordInsertCommand(), recordSimpleCommand()
+  - executeDotRepeat() executes the last recorded command
+  - Supports operators with motions, change commands, insert commands, simple commands (x, dd, etc.)
+- Helper functions: toggleCaseAtCursor, joinLines, indentLine, dedentLine
+- Updated src/lib/simulator/vim/index.ts to export undo module
+- Files changed: 2 files (undo.ts new, index.ts updated)
+- **Learnings for future iterations:**
+  - undo.ts combines both undo/redo system and dot repeat functionality
+  - Use updateActiveBuffer helper for consistent buffer state updates
+  - RepeatableCommand uses JSON.stringify/parse for storing in lastCommand string field
+  - Time parsing supports seconds (s), minutes (m), hours (h), days (d)
+  - undoLineChanges attempts to find snapshot where cursor was on same line
+---
