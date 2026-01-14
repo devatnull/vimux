@@ -255,3 +255,26 @@ Thread: http://localhost:8317/threads/T-019bbbda-40bd-7698-8128-97a5a771ae27
   - motions.ts has addToJumplist - import from motions.ts instead of redefining
   - Use `void _removed` pattern to satisfy ESLint when destructuring to remove keys
 ---
+
+## 2026-01-14 - US-009
+Thread: http://localhost:8317/threads/T-019bbbdf-b4d1-744e-9ee9-9bf0fee9833e
+- Verified complete vim search and replace system in src/lib/simulator/vim/search.ts:
+  - / and ? enter search mode with enterSearchMode(direction)
+  - Incremental search via updateSearchPattern() respecting incsearch setting
+  - Enter confirms with confirmSearch(), Escape cancels with exitSearchMode()
+  - n/N navigate matches with searchNext() and searchPrev()
+  - findAllMatches() finds all pattern matches with regex support
+  - findNextMatch() handles wrap-around with appropriate messages
+  - * and # search word under cursor via searchWordUnderCursor(direction, wholeWord)
+  - g* and g# supported by passing wholeWord=false to searchWordUnderCursor()
+  - getSearchMatches() and getCurrentMatchIndex() for UI highlighting
+  - clearSearchHighlight() for :noh command
+  - Search history navigation with navigateSearchHistory()
+  - handleSearchModeKey() is main entry point for search mode key processing
+- Files changed: 0 (search.ts already existed and was complete)
+- **Learnings for future iterations:**
+  - Search module already existed from a previous iteration
+  - searchWordUnderCursor has wholeWord param (default true) for * vs g* behavior
+  - SearchResult type used for all search operations
+  - searchState in VimState tracks pattern, matches, currentMatchIndex, highlightEnabled
+---
