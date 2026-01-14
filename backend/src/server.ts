@@ -81,7 +81,7 @@ const sessions = new Map<string, Session>();
 
 // Connection rate limiting per IP
 const connectionAttempts = new Map<string, { count: number; resetAt: number }>();
-const MAX_CONNECTIONS_PER_IP = 3;
+const MAX_CONNECTIONS_PER_IP = 10; // Increased for dev with HMR
 const CONNECTION_WINDOW_MS = 60000; // 1 minute
 
 function getClientIP(req: http.IncomingMessage): string {

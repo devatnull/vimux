@@ -96,7 +96,7 @@ export default function PracticePage() {
                 onReady={() => setConnected(true)}
                 onDisconnect={() => setConnected(false)}
                 onError={setError}
-                className="h-[500px] rounded-lg overflow-hidden"
+                className="h-[500px] max-w-4xl rounded-lg overflow-hidden border border-[#3b4261]"
               />
 
               {/* Key Visualizer - Always Visible */}

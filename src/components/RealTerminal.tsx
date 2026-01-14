@@ -1,18 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import { normalizeKeyFromDomEvent } from "@/lib/keys/normalizeKey";
-
-// =============================================================================
-// Types
-// =============================================================================
+import * as conn from "@/lib/terminalConnection";
+import type { ConnectionStatus } from "@/lib/terminalConnection";
 
 interface RealTerminalProps {
-  wsUrl?: string;
   className?: string;
   onReady?: () => void;
   onDisconnect?: () => void;
@@ -20,14 +17,7 @@ interface RealTerminalProps {
   onKey?: (key: string) => void;
 }
 
-type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
-
-// =============================================================================
-// Component
-// =============================================================================
-
 export function RealTerminal({
-  wsUrl = process.env.NEXT_PUBLIC_WS_URL || "wss://api.vimux.dev/ws",
   className = "",
   onReady,
   onDisconnect,
@@ -37,129 +27,16 @@ export function RealTerminal({
   const terminalRef = useRef<HTMLDivElement>(null);
   const terminalInstance = useRef<Terminal | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const connectRef = useRef<(() => void) | undefined>(undefined);
-  
-  const [status, setStatus] = useState<ConnectionStatus>("connecting");
-  const [statusMessage, setStatusMessage] = useState("Connecting...");
+  const mountedRef = useRef(true);
 
-  // ===========================================================================
-  // WebSocket Connection
-  // ===========================================================================
-
-  const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
-
-    setStatus("connecting");
-    setStatusMessage("Connecting to terminal server...");
-
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      console.log("WebSocket connected");
-      setStatusMessage("Starting terminal...");
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-
-        switch (message.type) {
-          case "session":
-            console.log("Session ID:", message.id);
-            break;
-
-          case "status":
-            setStatusMessage(message.message);
-            break;
-
-          case "ready":
-            setStatus("connected");
-            setStatusMessage("");
-            terminalInstance.current?.focus();
-            onReady?.();
-            
-            // Send initial resize
-            if (terminalInstance.current && fitAddon.current) {
-              ws.send(JSON.stringify({
-                type: "resize",
-                cols: terminalInstance.current.cols,
-                rows: terminalInstance.current.rows,
-              }));
-            }
-            break;
-
-          case "output":
-            terminalInstance.current?.write(message.data);
-            break;
-
-          case "error":
-            setStatus("error");
-            setStatusMessage(message.message);
-            onError?.(message.message);
-            break;
-
-          case "timeout":
-            setStatus("disconnected");
-            setStatusMessage(message.message);
-            onDisconnect?.();
-            break;
-
-          case "shutdown":
-            setStatus("disconnected");
-            setStatusMessage("Server is restarting...");
-            onDisconnect?.();
-            break;
-
-          case "pong":
-            // Heartbeat response
-            break;
-        }
-      } catch (error) {
-        console.error("Failed to parse message:", error);
-      }
-    };
-
-    ws.onerror = (error) => {
-      console.error("WebSocket error:", error);
-      setStatus("error");
-      setStatusMessage("Connection error");
-    };
-
-    ws.onclose = (event) => {
-      console.log("WebSocket closed:", event.code, event.reason);
-      wsRef.current = null;
-
-      if (status === "connected") {
-        setStatus("disconnected");
-        setStatusMessage("Disconnected from server");
-        onDisconnect?.();
-      }
-
-      // Attempt reconnect after 5 seconds (unless it was intentional)
-      if (event.code !== 1000 && event.code !== 1001) {
-        reconnectTimeout.current = setTimeout(() => {
-          console.log("Attempting reconnect...");
-          connectRef.current?.();
-        }, 5000);
-      }
-    };
-  }, [wsUrl, status, onReady, onDisconnect, onError]);
-
-  useEffect(() => {
-    connectRef.current = connect;
-  }, [connect]);
-
-  // ===========================================================================
-  // Terminal Setup
-  // ===========================================================================
+  const [status, setStatus] = useState<ConnectionStatus>(conn.getStatus());
+  const [statusMessage, setStatusMessage] = useState("");
 
   useEffect(() => {
     if (!terminalRef.current) return;
+    mountedRef.current = true;
 
-    // Create terminal instance
+    // Create terminal UI
     const terminal = new Terminal({
       cursorBlink: true,
       cursorStyle: "block",
@@ -193,24 +70,33 @@ export function RealTerminal({
       scrollback: 10000,
     });
 
-    // Add addons
     fitAddon.current = new FitAddon();
     terminal.loadAddon(fitAddon.current);
     terminal.loadAddon(new WebLinksAddon());
-
-    // Open terminal
-    terminal.open(terminalRef.current);
-    fitAddon.current.fit();
     terminalInstance.current = terminal;
 
-    // Handle user input
+    // Open terminal after a tick
+    const openTimer = setTimeout(() => {
+      if (!mountedRef.current || !terminalRef.current) return;
+      try {
+        terminal.open(terminalRef.current);
+        setTimeout(() => {
+          if (mountedRef.current && fitAddon.current) {
+            try {
+              fitAddon.current.fit();
+              conn.sendResize(terminal.cols, terminal.rows);
+            } catch { /* ignore */ }
+          }
+        }, 50);
+      } catch { /* Terminal may be disposed */ }
+    }, 10);
+
+    // Wire up terminal input to connection
     terminal.onData((data) => {
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: "input", data }));
-      }
+      conn.sendInput(data);
     });
 
-    // Handle key events for lesson validation
+    // Wire up key events for lesson validation
     terminal.onKey(({ domEvent }) => {
       const normalizedKey = normalizeKeyFromDomEvent(domEvent);
       if (normalizedKey && onKey) {
@@ -218,67 +104,76 @@ export function RealTerminal({
       }
     });
 
-    // Handle resize
-    const resizeObserver = new ResizeObserver(() => {
-      if (fitAddon.current) {
-        fitAddon.current.fit();
-        if (wsRef.current?.readyState === WebSocket.OPEN && terminal.cols && terminal.rows) {
-          wsRef.current.send(JSON.stringify({
-            type: "resize",
-            cols: terminal.cols,
-            rows: terminal.rows,
-          }));
-        }
+    // Wire up connection output to terminal
+    const unsubMessage = conn.onMessage((data) => {
+      if (mountedRef.current && terminalInstance.current) {
+        try {
+          terminalInstance.current.write(data);
+        } catch { /* Terminal may be disposed */ }
       }
     });
-    resizeObserver.observe(terminalRef.current);
 
-    // Connect to server (use queueMicrotask to satisfy lint)
-    queueMicrotask(connect);
-
-    // Heartbeat to keep connection alive
-    const heartbeat = setInterval(() => {
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: "ping" }));
+    // Wire up connection status
+    const unsubStatus = conn.onStatus((newStatus, message) => {
+      if (!mountedRef.current) return;
+      setStatus(newStatus);
+      setStatusMessage(message);
+      
+      if (newStatus === "connected") {
+        terminalInstance.current?.focus();
+        onReady?.();
+        if (terminalInstance.current) {
+          conn.sendResize(terminalInstance.current.cols, terminalInstance.current.rows);
+        }
+      } else if (newStatus === "disconnected") {
+        onDisconnect?.();
+      } else if (newStatus === "error") {
+        onError?.(message);
       }
-    }, 30000);
+    });
 
-    // Cleanup
+    // Start connection if not already connected
+    conn.connect();
+
+    // Resize observer
+    let resizeObserver: ResizeObserver | null = null;
+    const resizeTimer = setTimeout(() => {
+      if (!terminalRef.current || !mountedRef.current) return;
+      resizeObserver = new ResizeObserver(() => {
+        if (!mountedRef.current || !fitAddon.current || !terminalInstance.current) return;
+        requestAnimationFrame(() => {
+          if (!mountedRef.current || !fitAddon.current || !terminalInstance.current) return;
+          try {
+            fitAddon.current.fit();
+            conn.sendResize(terminalInstance.current.cols, terminalInstance.current.rows);
+          } catch { /* ignore */ }
+        });
+      });
+      resizeObserver.observe(terminalRef.current);
+    }, 100);
+
     return () => {
-      clearInterval(heartbeat);
-      if (reconnectTimeout.current) {
-        clearTimeout(reconnectTimeout.current);
-      }
-      resizeObserver.disconnect();
-      terminal.dispose();
-      if (wsRef.current) {
-        wsRef.current.close(1000, "Component unmounted");
-      }
+      mountedRef.current = false;
+      clearTimeout(openTimer);
+      clearTimeout(resizeTimer);
+      resizeObserver?.disconnect();
+      unsubMessage();
+      unsubStatus();
+      try {
+        terminal.dispose();
+      } catch { /* Already disposed */ }
+      terminalInstance.current = null;
+      fitAddon.current = null;
+      // DON'T disconnect - keep the connection alive for reuse
     };
-  }, [connect]);
+  }, [onReady, onDisconnect, onError, onKey]);
 
-  // ===========================================================================
-  // Reconnect Handler
-  // ===========================================================================
-
-  const handleReconnect = useCallback(() => {
-    if (reconnectTimeout.current) {
-      clearTimeout(reconnectTimeout.current);
-    }
-    if (wsRef.current) {
-      wsRef.current.close();
-    }
-    terminalInstance.current?.clear();
-    connect();
-  }, [connect]);
-
-  // ===========================================================================
-  // Render
-  // ===========================================================================
+  const handleReconnect = () => {
+    conn.reconnect();
+  };
 
   return (
-    <div className={`relative flex flex-col h-full bg-[#1a1b26] ${className}`}>
-      {/* Status overlay */}
+    <div className={`relative flex flex-col bg-[#1a1b26] overflow-hidden ${className}`}>
       {status !== "connected" && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#1a1b26]/90">
           <div className="text-center">
@@ -288,19 +183,19 @@ export function RealTerminal({
                 <p className="text-gray-300">{statusMessage}</p>
               </>
             )}
-            
+
             {status === "disconnected" && (
               <>
-                <p className="text-gray-300 mb-4">{statusMessage}</p>
+                <p className="text-gray-300 mb-4">{statusMessage || "Disconnected"}</p>
                 <button
                   onClick={handleReconnect}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
                 >
-                  Reconnect
+                  Connect
                 </button>
               </>
             )}
-            
+
             {status === "error" && (
               <>
                 <p className="text-red-400 mb-4">{statusMessage}</p>
@@ -316,14 +211,11 @@ export function RealTerminal({
         </div>
       )}
 
-      {/* Terminal container */}
       <div
         ref={terminalRef}
-        className="flex-1 p-2"
-        style={{ minHeight: "400px" }}
+        className="flex-1 p-2 overflow-hidden"
       />
 
-      {/* Status bar */}
       <div className="flex items-center justify-between px-3 py-1 bg-[#16161e] text-xs text-gray-500 border-t border-gray-800">
         <span>
           {status === "connected" && (
