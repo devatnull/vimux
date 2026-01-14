@@ -1445,6 +1445,6 @@ export const useUserStore = create<UserStore>()(
         set({ user: initialUserState });
       },
     }),
-    { name: "learn-tmux-nvim-progress" }
+    { name: "vimux-progress" }
   )
 );

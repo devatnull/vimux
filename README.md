@@ -1,111 +1,119 @@
-# Learn tmux & Neovim
+# Vimux
 
-An interactive, browser-based learning platform for mastering tmux and Neovim. Free, no signup required.
+An interactive learning platform for mastering tmux and Neovim. Practice with real terminals in your browser.
 
-![Screenshot](docs/screenshot.png)
+Website: [vimux.dev](https://vimux.dev)
 
 ## Features
 
-- 🎮 **Interactive Simulator** - Practice tmux and Neovim commands in a safe, browser-based environment
-- 📚 **Structured Lessons** - Learn progressively from basics to advanced workflows
-- ⌨️ **Complete Reference** - Quick access to all 100+ shortcuts with searchable cheat sheets
-- 💾 **Progress Tracking** - Your progress is saved locally, no account needed
-- 🌐 **Cross-Platform** - Works on Windows, macOS, and Linux (keyboard shortcuts adapt automatically)
+- Real neovim and tmux running in isolated containers
+- Interactive lessons from beginner to advanced
+- Keyboard shortcut reference with search
+- Progress tracking across sessions
+- No installation required
 
-## Live Demo
+## Quick Start
 
-Visit: [https://learn-tmux-and-nvim.vercel.app](https://learn-tmux-and-nvim.vercel.app)
+```bash
+git clone https://github.com/devatnull/vimux.git
+cd vimux
+npm install
+npm run dev
+```
 
-## Topics Covered
+Open [http://localhost:3000](http://localhost:3000)
 
-### tmux
-- Prefix key (Ctrl+a / Ctrl+b)
-- Session, window, and pane management
-- Splitting and navigating panes
-- Copy mode and scrolling
-- Configuration basics
+## Architecture
 
-### Neovim
-- Modal editing (Normal, Insert, Visual, Command modes)
-- Cursor movement and motions
-- Text editing operations
-- Leader key shortcuts (Space)
-- LSP navigation (go to definition, references, hover)
-- File navigation and fuzzy finding
-- Git integration
-- AI assistants (Opencode)
+```
+vimux.dev (Vercel)         api.vimux.dev (Hetzner)
+    Frontend        --->       Backend
+    Next.js                    Node.js + Docker
+    Lessons UI                 Real terminals
+```
 
-### Workflows
-- tmux + Neovim combined workflows
-- Development environment setup
-- Git workflow integration
-- Searching your codebase
+The frontend runs on Vercel. The backend runs isolated Docker containers with neovim and tmux, connected via WebSocket.
 
 ## Tech Stack
 
-- [Next.js 16](https://nextjs.org/) - React framework
-- [TypeScript](https://www.typescriptlang.org/) - Type safety
-- [Tailwind CSS](https://tailwindcss.com/) - Styling
-- [Zustand](https://zustand-demo.pmnd.rs/) - State management
-- [Framer Motion](https://www.framer.com/motion/) - Animations
-- [Lucide React](https://lucide.dev/) - Icons
+**Frontend**
+- Next.js 16 (App Router)
+- TypeScript
+- Tailwind CSS
+- Zustand (state management)
+- xterm.js (terminal emulator)
+
+**Backend**
+- Node.js
+- Docker (Alpine containers)
+- WebSocket
+
+## Project Structure
+
+```
+src/
+  app/           Next.js pages
+  components/    React components
+  lib/           Utilities, types, lessons
+
+backend/
+  src/           WebSocket server
+  containers/    Docker config, practice files
+  deploy/        Server setup scripts
+```
 
 ## Development
 
 ```bash
-# Install dependencies
-npm install
-
-# Start development server
+# Frontend
 npm run dev
 
-# Build for production
-npm run build
-
-# Start production server
-npm start
+# Backend (requires Docker)
+cd backend
+npm install
+npm run dev
 ```
 
-## Deploying to Vercel
+## Deployment
 
-This project is designed to be deployed on Vercel with zero configuration:
+See [DEPLOY.md](./DEPLOY.md) for full server setup instructions.
 
-1. Fork this repository
-2. Import it in [Vercel](https://vercel.com/new)
-3. Deploy!
+**Frontend**: Deploy to Vercel, set `NEXT_PUBLIC_WS_URL=wss://api.vimux.dev/ws`
 
-## Based On
-
-The shortcuts and workflows in this tutorial are based on:
-- [gpakosz/.tmux](https://github.com/gpakosz/.tmux) - tmux configuration
-- [LazyVim](https://www.lazyvim.org/) style Neovim setup
-- Custom keybindings for productivity
+**Backend**: See deployment guide for Hetzner/Ubuntu setup.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions welcome. Please read the guidelines below.
 
-### Adding New Lessons
+### Adding Lessons
 
-Lessons are defined in `src/lib/lessons.ts`. Each lesson has:
+Edit `src/lib/lessons.ts`. Each lesson needs:
 - Unique ID
 - Title and description
-- Category (tmux, neovim, workflow)
-- Difficulty level
-- Steps with expected key inputs
-- Prerequisites (optional)
+- Category: tmux, neovim, or workflow
+- Difficulty: beginner, intermediate, or advanced
+- Steps with expected keys and validation
 
-### Adding New Shortcuts
+### Adding Shortcuts
 
-Shortcuts are defined in `src/lib/shortcuts.ts` with:
-- Keys sequence
-- Description
-- Category and subcategory
+Edit `src/lib/shortcuts.ts`. Each shortcut needs:
+- ID, keys array, description
+- Category and optional subcategory
+
+### Code Style
+
+- TypeScript strict mode
+- Functional components with hooks
+- No unnecessary comments in code
+- Run `npm run lint` before committing
 
 ## License
 
-MIT License - feel free to use this project for learning and teaching!
+MIT
 
----
+## Links
 
-Built with ❤️ for developers who want to work faster.
+- [Website](https://vimux.dev)
+- [GitHub](https://github.com/devatnull/vimux)
+- [Issues](https://github.com/devatnull/vimux/issues)

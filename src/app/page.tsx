@@ -265,7 +265,7 @@ export default function HomePage() {
                 <ArrowRight className="w-4 h-4" />
               </Link>
               <a
-                href="https://github.com/devatnull/learn-tmux-and-nvim"
+                href="https://github.com/devatnull/vimux"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-[#414868] text-[#a9b1d6] hover:bg-[#24283b] transition-colors"
@@ -284,7 +284,7 @@ export default function HomePage() {
               Built with ❤️ for developers who want to work faster.
               <br />
               <a
-                href="https://github.com/devatnull/learn-tmux-and-nvim"
+                href="https://github.com/devatnull/vimux"
                 className="text-[#7aa2f7] hover:underline"
               >
                 Open source

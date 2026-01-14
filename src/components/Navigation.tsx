@@ -59,7 +59,7 @@ export function Navigation() {
 
             {/* GitHub */}
             <a
-              href="https://github.com/devatnull/learn-tmux-and-nvim"
+              href="https://github.com/devatnull/vimux"
               target="_blank"
               rel="noopener noreferrer"
               className="p-2 rounded-lg text-[#565f89] hover:text-[#a9b1d6] hover:bg-[#24283b]/50 transition-colors ml-2"

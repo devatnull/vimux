@@ -10,7 +10,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}/terminal-sandbox
+  IMAGE_NAME: devatnull/vimux/terminal-sandbox
 
 jobs:
   build:

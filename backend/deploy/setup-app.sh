@@ -22,7 +22,7 @@ cd $APP_DIR
 # -----------------------------------------------------------------------------
 echo "📦 Setting up application files..."
 # If you're deploying from git:
-# git clone https://github.com/yourusername/learn-tmux-and-nvim.git .
+# git clone https://github.com/yourusername/vimux.git .
 # Or copy the backend folder here
 
 # -----------------------------------------------------------------------------
