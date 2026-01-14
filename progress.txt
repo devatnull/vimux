@@ -30,3 +30,27 @@ Thread: http://localhost:8317/threads/T-019bbb9c-dc27-70b1-8eb4-21ec50e69963
   - Use createDefaultSimulatorState() to initialize full state
   - VimRegisterContent has type property ("char" | "line" | "block") for paste behavior
 ---
+
+## 2026-01-14 - US-002
+Thread: http://localhost:8317/threads/T-019bbba3-31c9-71e4-9948-37966264ac64
+- Implemented complete vim motion engine for basic motions
+- Created src/lib/simulator/vim/motions.ts with:
+  - h/j/k/l character and line movement with boundary checking
+  - w/W word/WORD forward motions (word = alphanumeric, WORD = whitespace-delimited)
+  - b/B word/WORD backward motions
+  - e/E end of word/WORD motions
+  - 0/^/$ line position motions (start, first non-whitespace, end)
+  - gg/G go to line motions (with optional count)
+  - {/} paragraph motions (blank line separated)
+  - f/F/t/T character find motions (forward/backward, on/before)
+  - ;/, repeat last find motion (same/reverse direction)
+  - All motions support count prefix
+- Created src/lib/simulator/vim/index.ts for exports
+- Updated src/lib/simulator/index.ts to export vim module
+- Files changed: 3 files
+- **Learnings for future iterations:**
+  - Motion functions return MotionResult with optional linewise/inclusive flags for operator integration
+  - lastFindMotion state tracks f/F/t/T for ; and , repetition
+  - Word boundaries use WORD_SEPARATORS constant from constants.ts
+  - executeMotion() is the main entry point for applying motions with count support
+---
