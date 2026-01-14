@@ -9,3 +9,4 @@ export * from "./registers";
 export * from "./marks";
 export * from "./macros";
 export * from "./undo";
+export * from "./folding";
