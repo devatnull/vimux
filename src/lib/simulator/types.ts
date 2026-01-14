@@ -154,6 +154,10 @@ export interface VimState {
 
   insertModeStartCol: number | null;
 
+  leaderActive: boolean;
+  leaderKeySequence: string[];
+  leaderTimeoutAt: number | null;
+
   settings: VimSettings;
 }
 

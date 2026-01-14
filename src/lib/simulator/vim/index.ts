@@ -10,3 +10,4 @@ export * from "./marks";
 export * from "./macros";
 export * from "./undo";
 export * from "./folding";
+export * from "./leader";

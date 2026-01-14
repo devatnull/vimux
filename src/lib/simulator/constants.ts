@@ -191,6 +191,10 @@ export function createDefaultVimState(): VimState {
 
     insertModeStartCol: null,
 
+    leaderActive: false,
+    leaderKeySequence: [],
+    leaderTimeoutAt: null,
+
     settings: { ...DEFAULT_VIM_SETTINGS },
   };
 }
