@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { shortcuts, getSubcategories } from "@/lib/shortcuts";
+import { shortcuts } from "@/lib/shortcuts";
 import clsx from "clsx";
 import { Search, ChevronDown, ChevronRight } from "lucide-react";
 
@@ -179,7 +179,7 @@ export function ShortcutReference({ category }: ShortcutReferenceProps) {
 
       {filteredShortcuts.length === 0 && (
         <div className="text-center py-8 text-[#565f89]">
-          No shortcuts found matching "{search}"
+          No shortcuts found matching &quot;{search}&quot;
         </div>
       )}
     </div>

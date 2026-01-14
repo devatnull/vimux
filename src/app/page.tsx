@@ -10,15 +10,14 @@ import {
   BookOpen,
   ArrowRight,
   Github,
-  CheckCircle,
 } from "lucide-react";
 
 const features = [
   {
     icon: Terminal,
-    title: "Interactive Simulator",
+    title: "Real Terminal",
     description:
-      "Practice tmux and Neovim commands in a safe, browser-based environment",
+      "Practice in actual tmux and Neovim running in Docker containers — not a simulation",
     color: "text-[#7aa2f7]",
   },
   {
@@ -37,9 +36,9 @@ const features = [
   },
   {
     icon: Zap,
-    title: "Real Keybindings",
+    title: "Zero Setup",
     description:
-      "Uses actual tmux and Neovim keybindings you'll use in production",
+      "No installation required — real terminal environment instantly available in your browser",
     color: "text-[#ff9e64]",
   },
 ];
@@ -77,7 +76,7 @@ export default function HomePage() {
 
               <p className="text-lg sm:text-xl text-[#a9b1d6] mb-8 max-w-2xl mx-auto">
                 Learn the essential terminal tools that 10x developers use daily.
-                Interactive tutorials, real keybindings, zero setup required.
+                Real tmux and Neovim in Docker-based terminals, right in your browser.
               </p>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -93,7 +92,7 @@ export default function HomePage() {
                   className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-[#414868] text-[#a9b1d6] hover:bg-[#24283b] transition-colors"
                 >
                   <Terminal className="w-4 h-4" />
-                  Try the Simulator
+                  Start Practice
                 </Link>
               </div>
             </div>
@@ -114,7 +113,8 @@ export default function HomePage() {
                     <span className="line-number">1</span>
                     <span>
                       <span className="syntax-comment">
-                        // Welcome to the interactive simulator
+                        {/* // Real terminal — real skills */}
+                        {"// Real terminal — real skills"}
                       </span>
                     </span>
                   </div>
@@ -202,8 +202,8 @@ export default function HomePage() {
                   Learn the essentials first
                 </h2>
                 <p className="text-[#a9b1d6] mb-6">
-                  You don't need to memorize hundreds of shortcuts. Master these
-                  5 commands and you're already more productive than most
+                  You don&apos;t need to memorize hundreds of shortcuts. Master these
+                  5 commands and you&apos;re already more productive than most
                   developers.
                 </p>
                 <Link

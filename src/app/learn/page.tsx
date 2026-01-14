@@ -1,15 +1,23 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { Navigation } from "@/components/Navigation";
 import { LessonList } from "@/components/LessonList";
-import { Terminal } from "@/components/Terminal";
 import { KeyboardVisualizer } from "@/components/KeyboardVisualizer";
-import { useSimulatorStore, useUserStore } from "@/lib/store";
+import { useKeyHistoryStore } from "@/lib/stores/keyHistoryStore";
+import { useLessonProgressStore } from "@/lib/stores/lessonProgressStore";
+import { useUserStore } from "@/lib/stores/userStore";
+import { formatKeyDisplay } from "@/lib/keys/formatKeyDisplay";
 import { Lesson } from "@/lib/types";
 import { lessons, getNextLesson } from "@/lib/lessons";
 import clsx from "clsx";
-import { ChevronLeft, ChevronRight, X, List, CheckCircle, RotateCcw, Menu } from "lucide-react";
+import { ChevronLeft, ChevronRight, X, CheckCircle, RotateCcw, Menu } from "lucide-react";
+
+const RealTerminal = dynamic(
+  () => import("@/components/RealTerminal").then((mod) => mod.RealTerminal),
+  { ssr: false }
+);
 
 type Tab = "all" | "tmux" | "neovim" | "workflow";
 
@@ -17,20 +25,36 @@ export default function LearnPage() {
   const [activeTab, setActiveTab] = useState<Tab>("all");
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
   const [showLessonList, setShowLessonList] = useState(false);
-  const { currentStepIndex, feedback, setLesson, resetSimulator, nextStep } = useSimulatorStore();
+  const [terminalKey, setTerminalKey] = useState(0);
+
+  const { pushKey, clear: clearKeys } = useKeyHistoryStore();
+  const { currentStepIndex, feedback, setLesson, resetLesson, nextStep } = useLessonProgressStore();
   const { markLessonComplete, user } = useUserStore();
+
+  const handleKeyFromTerminal = (key: string) => {
+    pushKey(key);
+    useLessonProgressStore.getState().handleLessonKey(key);
+  };
 
   const handleSelectLesson = (lesson: Lesson) => {
     setSelectedLesson(lesson);
     setLesson(lesson);
-    resetSimulator();
+    setTerminalKey((k) => k + 1);
+    clearKeys();
     setShowLessonList(false);
   };
 
   const handleBack = () => {
     setSelectedLesson(null);
     setLesson(null);
-    resetSimulator();
+    resetLesson();
+    clearKeys();
+  };
+
+  const handleReset = () => {
+    setTerminalKey((k) => k + 1);
+    resetLesson();
+    clearKeys();
   };
 
   const handleComplete = () => {
@@ -80,9 +104,7 @@ export default function LearnPage() {
       <Navigation />
 
       {selectedLesson ? (
-        // Full IDE View
         <div className="flex-1 flex flex-col pt-16">
-          {/* Top Bar with lesson info */}
           <div className="bg-[#24283b] border-b border-[#414868] px-2 md:px-4 py-2 flex items-center gap-2 md:gap-4">
             <button
               onClick={() => setShowLessonList(!showLessonList)}
@@ -134,12 +156,9 @@ export default function LearnPage() {
             </button>
           </div>
 
-          {/* Main content area */}
           <div className="flex-1 flex relative">
-            {/* Lesson list sidebar - fullscreen on mobile, sidebar on desktop */}
             {showLessonList && (
               <>
-                {/* Backdrop for mobile */}
                 <div 
                   className="fixed inset-0 bg-black/50 z-10 md:hidden"
                   onClick={() => setShowLessonList(false)}
@@ -181,24 +200,20 @@ export default function LearnPage() {
               </>
             )}
 
-            {/* Terminal - takes full width */}
             <div className="flex-1 p-2 md:p-4 flex flex-col">
               <div className="flex-1 flex justify-center">
                 <div className="w-full max-w-full md:max-w-5xl">
-                  <Terminal />
+                  <RealTerminal key={terminalKey} onKey={handleKeyFromTerminal} />
                 </div>
               </div>
               
-              {/* Keyboard visualizer */}
               <div className="mt-4 flex justify-center overflow-x-auto">
                 <KeyboardVisualizer />
               </div>
             </div>
           </div>
 
-          {/* Bottom lesson step bar */}
           <div className="bg-[#24283b] border-t border-[#414868] sticky bottom-0 z-10">
-            {/* Progress bar */}
             <div className="h-1 bg-[#1a1b26]">
               <div 
                 className="h-full bg-[#7aa2f7] transition-all duration-300" 
@@ -207,12 +222,10 @@ export default function LearnPage() {
             </div>
 
             <div className="px-2 md:px-4 py-2 md:py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-              {/* Step info */}
               <div className="flex items-center gap-2 text-xs md:text-sm text-[#565f89]">
                 <span>Step {currentStepIndex + 1}/{selectedLesson.steps.length}</span>
               </div>
 
-              {/* Current instruction */}
               {currentStep && (
                 <div className="flex-1 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                   <span className="text-[#a9b1d6] text-sm">{currentStep.instruction}</span>
@@ -229,7 +242,6 @@ export default function LearnPage() {
                 </div>
               )}
 
-              {/* Feedback */}
               {feedback && (
                 <div
                   className={clsx(
@@ -243,10 +255,9 @@ export default function LearnPage() {
                 </div>
               )}
 
-              {/* Actions */}
               <div className="flex items-center gap-2">
                 <button
-                  onClick={resetSimulator}
+                  onClick={handleReset}
                   className="p-2 rounded hover:bg-[#414868] text-[#565f89] hover:text-[#a9b1d6]"
                   title="Reset"
                 >
@@ -273,7 +284,6 @@ export default function LearnPage() {
           </div>
         </div>
       ) : (
-        // Lesson List View
         <main className="flex-1 pt-20 pb-12 px-4">
           <div className="max-w-7xl mx-auto">
             <div className="mb-6 md:mb-8">
@@ -285,7 +295,6 @@ export default function LearnPage() {
               </p>
             </div>
 
-            {/* Tabs */}
             <div className="flex gap-2 mb-6 md:mb-8 border-b border-[#414868] pb-4 flex-wrap">
               {tabs.map((tab) => (
                 <button
@@ -303,7 +312,6 @@ export default function LearnPage() {
               ))}
             </div>
 
-            {/* Lessons */}
             <LessonList
               category={activeTab === "all" ? undefined : activeTab}
               onSelectLesson={handleSelectLesson}
@@ -313,16 +321,4 @@ export default function LearnPage() {
       )}
     </div>
   );
-}
-
-function formatKeyDisplay(key: string): string {
-  const isMac =
-    typeof navigator !== "undefined" && navigator.platform.includes("Mac");
-
-  return key
-    .replace("Ctrl-", isMac ? "⌃" : "Ctrl+")
-    .replace("Alt-", isMac ? "⌥" : "Alt+")
-    .replace("Shift-", isMac ? "⇧" : "Shift+")
-    .replace("Meta-", isMac ? "⌘" : "Win+")
-    .replace("Space", "␣");
 }

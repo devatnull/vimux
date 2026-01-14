@@ -98,13 +98,23 @@ function matchesCategoryFilter(
 }
 
 export default function ReferencePage() {
-  const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
+  const [search, setSearchInternal] = useState("");
+  const [categoryFilter, setCategoryFilterInternal] = useState<CategoryFilter>("all");
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const listRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const setSearch = useCallback((value: string) => {
+    setSearchInternal(value);
+    setSelectedIndex(-1);
+  }, []);
+
+  const setCategoryFilter = useCallback((value: CategoryFilter) => {
+    setCategoryFilterInternal(value);
+    setSelectedIndex(-1);
+  }, []);
 
   const isMac =
     typeof navigator !== "undefined" && navigator.platform.includes("Mac");
@@ -260,10 +270,6 @@ export default function ReferencePage() {
       el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
   }, [selectedIndex, flatList]);
-
-  useEffect(() => {
-    setSelectedIndex(-1);
-  }, [search, categoryFilter]);
 
   const tmuxCount = getTmuxShortcuts();
   const neovimCount = getNeovimShortcuts();

@@ -1,7 +1,7 @@
 "use client";
 
 import { lessons } from "@/lib/lessons";
-import { useUserStore } from "@/lib/store";
+import { useUserStore } from "@/lib/stores/userStore";
 import { Lesson } from "@/lib/types";
 import clsx from "clsx";
 import { CheckCircle, Clock, ChevronRight } from "lucide-react";

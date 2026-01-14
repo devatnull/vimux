@@ -5,6 +5,7 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
+import { normalizeKeyFromDomEvent } from "@/lib/keys/normalizeKey";
 
 // =============================================================================
 // Types
@@ -16,6 +17,7 @@ interface RealTerminalProps {
   onReady?: () => void;
   onDisconnect?: () => void;
   onError?: (error: string) => void;
+  onKey?: (key: string) => void;
 }
 
 type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
@@ -25,17 +27,19 @@ type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
 // =============================================================================
 
 export function RealTerminal({
-  wsUrl = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:3001/ws",
+  wsUrl = process.env.NEXT_PUBLIC_WS_URL || "wss://api.vimux.dev/ws",
   className = "",
   onReady,
   onDisconnect,
   onError,
+  onKey,
 }: RealTerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const terminalInstance = useRef<Terminal | null>(null);
   const fitAddon = useRef<FitAddon | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectRef = useRef<(() => void) | undefined>(undefined);
   
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const [statusMessage, setStatusMessage] = useState("Connecting...");
@@ -138,11 +142,15 @@ export function RealTerminal({
       if (event.code !== 1000 && event.code !== 1001) {
         reconnectTimeout.current = setTimeout(() => {
           console.log("Attempting reconnect...");
-          connect();
+          connectRef.current?.();
         }, 5000);
       }
     };
   }, [wsUrl, status, onReady, onDisconnect, onError]);
+
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   // ===========================================================================
   // Terminal Setup
@@ -202,6 +210,14 @@ export function RealTerminal({
       }
     });
 
+    // Handle key events for lesson validation
+    terminal.onKey(({ domEvent }) => {
+      const normalizedKey = normalizeKeyFromDomEvent(domEvent);
+      if (normalizedKey && onKey) {
+        onKey(normalizedKey);
+      }
+    });
+
     // Handle resize
     const resizeObserver = new ResizeObserver(() => {
       if (fitAddon.current) {
@@ -217,8 +233,8 @@ export function RealTerminal({
     });
     resizeObserver.observe(terminalRef.current);
 
-    // Connect to server
-    connect();
+    // Connect to server (use queueMicrotask to satisfy lint)
+    queueMicrotask(connect);
 
     // Heartbeat to keep connection alive
     const heartbeat = setInterval(() => {

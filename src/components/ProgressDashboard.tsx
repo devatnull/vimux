@@ -1,7 +1,7 @@
 "use client";
 
 import { lessons, getLessonProgress } from "@/lib/lessons";
-import { useUserStore } from "@/lib/store";
+import { useUserStore } from "@/lib/stores/userStore";
 import { BarChart3, Trophy, Flame, Clock } from "lucide-react";
 
 export function ProgressDashboard() {

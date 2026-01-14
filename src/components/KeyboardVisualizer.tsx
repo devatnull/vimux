@@ -1,7 +1,7 @@
 "use client";
 
-import { useSimulatorStore } from "@/lib/store";
-import { useState, useEffect, useRef } from "react";
+import { useKeyHistoryStore } from "@/lib/stores/keyHistoryStore";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 interface KeyEntry {
   key: string;
@@ -10,14 +10,14 @@ interface KeyEntry {
 }
 
 export function KeyboardVisualizer() {
-  const { state, leaderActive, leaderSequence } = useSimulatorStore();
   const [keyHistory, setKeyHistory] = useState<KeyEntry[]>([]);
-  const lastSequenceLengthRef = useRef(0);
+  const [now, setNow] = useState(() => Date.now());
+  const lastKeysLengthRef = useRef(0);
 
-  useEffect(() => {
-    const currentLength = state.keySequence.length;
-    if (currentLength > lastSequenceLengthRef.current && currentLength > 0) {
-      const newKey = state.keySequence[currentLength - 1];
+  const handleKeyChange = useCallback((keys: string[]) => {
+    const currentLength = keys.length;
+    if (currentLength > lastKeysLengthRef.current && currentLength > 0) {
+      const newKey = keys[currentLength - 1];
       const entry: KeyEntry = {
         key: newKey,
         timestamp: Date.now(),
@@ -25,48 +25,34 @@ export function KeyboardVisualizer() {
       };
       setKeyHistory((prev) => [...prev.slice(-4), entry]);
     }
-    lastSequenceLengthRef.current = currentLength;
-  }, [state.keySequence]);
+    lastKeysLengthRef.current = currentLength;
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = useKeyHistoryStore.subscribe(
+      (state) => handleKeyChange(state.keys)
+    );
+    return unsubscribe;
+  }, [handleKeyChange]);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      const now = Date.now();
-      setKeyHistory((prev) => prev.filter((k) => now - k.timestamp < 3000));
+      const currentTime = Date.now();
+      setNow(currentTime);
+      setKeyHistory((prev) => prev.filter((k) => currentTime - k.timestamp < 3000));
     }, 100);
     return () => clearInterval(interval);
   }, []);
-
-  const pendingOperator = state.vim.pendingOperator;
-  const prefixActive = state.tmux.prefixActive;
 
   return (
     <div className="flex items-center gap-2 p-4 bg-[#1a1b26] rounded-lg border border-[#292e42]">
       <span className="text-[#565f89] text-sm mr-2 font-medium">Keys:</span>
 
-      {prefixActive && (
-        <span className="inline-flex items-center px-2 py-1 text-xs font-mono font-bold bg-[#bb9af7] text-[#1a1b26] rounded shadow-md animate-pulse">
-          &lt;Prefix&gt;-
-        </span>
-      )}
-
-      {leaderActive && (
-        <span className="inline-flex items-center px-2 py-1 text-xs font-mono font-bold bg-[#7aa2f7] text-[#1a1b26] rounded shadow-md animate-pulse">
-          &lt;Space&gt;-
-          {leaderSequence.length > 0 && leaderSequence.join("")}
-        </span>
-      )}
-
-      {pendingOperator && (
-        <span className="inline-flex items-center px-2 py-1 text-xs font-mono font-bold bg-[#f7768e] text-[#1a1b26] rounded shadow-md">
-          {pendingOperator}-
-        </span>
-      )}
-
-      {keyHistory.length === 0 && !prefixActive && !leaderActive && !pendingOperator ? (
+      {keyHistory.length === 0 ? (
         <span className="text-[#565f89] text-sm italic">Press any key...</span>
       ) : (
         keyHistory.map((entry, i) => {
-          const age = Date.now() - entry.timestamp;
+          const age = now - entry.timestamp;
           const opacity = Math.max(0.3, 1 - age / 3000);
           const isLatest = i === keyHistory.length - 1;
 

@@ -1,26 +1,3 @@
-// Re-export simulator types for compatibility
-export type {
-  VimMode,
-  VimBuffer,
-  VimState,
-  TmuxPane,
-  TmuxWindow,
-  TmuxSession,
-  TmuxState,
-  SimulatorState as FullSimulatorState,
-  CursorPosition,
-  VisualSelection,
-  SearchState,
-} from "./simulator/types";
-
-// SimulatorState for the store - uses full types to support simulator module integration
-export interface SimulatorState {
-  tmux: import("./simulator/types").TmuxState;
-  vim: import("./simulator/types").VimState;
-  keySequence: string[];
-  lastAction?: string;
-}
-
 export interface Shortcut {
   id: string;
   keys: string[];
@@ -41,27 +18,12 @@ export interface Lesson {
   estimatedMinutes: number;
 }
 
-export interface LessonStepValidation {
-  cursorPosition?: { line: number; col: number };
-  cursorLine?: number;
-  cursorCol?: number;
-  mode?: import("./simulator/types").VimMode;
-  bufferContent?: string[] | ((content: string[]) => boolean);
-  bufferContains?: string;
-  paneCount?: number;
-  windowCount?: number;
-  prefixActive?: boolean;
-  custom?: (state: SimulatorState) => boolean;
-}
-
 export interface LessonStep {
   id: string;
   instruction: string;
   expectedKeys?: string[];
-  validation?: LessonStepValidation;
   hint?: string;
   successMessage: string;
-  setupState?: Partial<SimulatorState>;
   context?: "tmux" | "vim";
 }
 

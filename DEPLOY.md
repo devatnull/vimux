@@ -88,8 +88,13 @@ npm run build
 Create environment file:
 
 ```bash
-cp .env.example .env
-# Edit .env with your domain
+cat > .env << 'EOF'
+PORT=3001
+MAX_SESSIONS=15
+SESSION_TIMEOUT=1800000
+IDLE_TIMEOUT=300000
+ALLOWED_ORIGINS=https://vimux.dev,https://www.vimux.dev
+EOF
 ```
 
 ### Nginx Configuration
@@ -98,7 +103,6 @@ As root, create `/etc/nginx/sites-available/vimux`:
 
 ```nginx
 server {
-    listen 80;
     server_name api.yourdomain.com;
 
     location /ws {
@@ -107,12 +111,36 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
     }
 
     location /health {
         proxy_pass http://127.0.0.1:3001;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
+
+    location /stats {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    listen 443 ssl;
+    ssl_certificate /etc/letsencrypt/live/api.yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.yourdomain.com/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
+
+server {
+    listen 80;
+    server_name api.yourdomain.com;
+    return 301 https://$host$request_uri;
 }
 ```
 
@@ -140,11 +168,11 @@ Requires=docker.service
 Type=simple
 User=termuser
 WorkingDirectory=/opt/vimux/backend
+EnvironmentFile=/opt/vimux/backend/.env
 ExecStart=/usr/bin/node dist/server.js
 Restart=always
+RestartSec=5
 Environment=NODE_ENV=production
-Environment=PORT=3001
-Environment=ALLOWED_ORIGINS=https://vimux.dev
 
 [Install]
 WantedBy=multi-user.target
