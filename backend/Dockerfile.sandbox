@@ -42,8 +42,8 @@ WORKDIR /home/learner/practice
 # Switch to non-root user
 USER learner
 
-# Default command
-CMD ["tmux", "new-session", "-s", "learn"]
+# Default command - start tmux with neovim in the first window
+CMD ["tmux", "new-session", "-s", "learn", "nvim", "welcome.txt"]
 
 # =============================================================================
 # Security: This container runs with these restrictions (applied at runtime):
